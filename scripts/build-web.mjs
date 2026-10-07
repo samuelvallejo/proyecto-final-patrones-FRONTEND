@@ -1,0 +1,13 @@
+import {execFileSync} from 'node:child_process';
+import {renameSync} from 'node:fs';
+import path from 'node:path';
+import {fileURLToPath} from 'node:url';
+import {build} from 'vite';
+const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
+execFileSync(process.execPath,[path.join(root,'scripts/check-localization.mjs')],{cwd:root,stdio:'inherit'});
+const compiler=path.join(root,'node_modules/typescript/bin/tsc');
+for(const config of ['tsconfig.json','tsconfig.worker.json'])execFileSync(process.execPath,[compiler,'--noEmit','-p',path.join(root,'frontend',config)],{cwd:root,stdio:'inherit'});
+await build({configFile:path.join(root,'vite.config.mjs')});
+execFileSync(process.execPath,[compiler,'-p',path.join(root,'frontend/tsconfig.worker.json')],{cwd:root,stdio:'inherit'});
+renameSync(path.join(root,'frontend/dist/service-worker.js'),path.join(root,'frontend/dist/sw.js'));
+console.log('TypeScript frontend compiled with Vite. Java and Maven are required only for the backend.');

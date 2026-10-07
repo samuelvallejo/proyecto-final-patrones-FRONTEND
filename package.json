@@ -1,0 +1,20 @@
+{
+  "name": "streamguard",
+  "private": true,
+  "version": "1.0.0",
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "scripts": {
+    "dev": "vite --host 0.0.0.0",
+    "typecheck": "tsc --noEmit -p frontend/tsconfig.json && tsc --noEmit -p frontend/tsconfig.worker.json",
+    "build": "node scripts/build-web.mjs",
+    "preview": "node scripts/serve-web.mjs",
+    "check:localization": "node scripts/check-localization.mjs"
+  },
+  "devDependencies": {
+    "playwright": "1.62.1",
+    "typescript": "7.0.2",
+    "vite": "8.3.2"
+  }
+}

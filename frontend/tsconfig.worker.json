@@ -1,0 +1,8 @@
+{
+  "compilerOptions": {
+    "target": "ES2022", "lib": ["ES2022", "WebWorker"], "module": "ES2022",
+    "moduleResolution": "Bundler", "strict": true, "noUncheckedIndexedAccess": true,
+    "types": [], "rootDir": "src", "outDir": "dist"
+  },
+  "include": ["src/service-worker.ts"]
+}
