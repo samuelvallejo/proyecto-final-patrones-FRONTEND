@@ -232,14 +232,29 @@ export class StreamGuardApp {
     left.append(html(t('uiStudioText78') + (this.broadcasting ? t('uiStudioText79') : t('uiStudioText80')) + "</span></div><div class='video-stage'><video id='live-video' autoplay playsinline muted></video><div class='video-placeholder' id='video-placeholder'>" + icon('video') + t('uiStudioText81')));
     if (this.broadcasting) {
       const actions = panel('action-row');
-      const microphone = button(media.microphoneEnabled() ? t('uiStudioText104') : t('uiStudioText105'), 'button subtle', () => {
+      const microphone = button('', 'button subtle media-toggle', () => {
         const enabled = media.toggleMicrophone();
-        microphone.textContent = enabled ? t('uiStudioText104') : t('uiStudioText105');
+        microphone.innerHTML = icon(enabled ? 'microphone' : 'microphone-off') + `<span>${enabled ? t('uiStudioText104') : t('uiStudioText105')}</span>`;
         microphone.setAttribute('aria-pressed', String(enabled));
+        microphone.setAttribute('aria-label', enabled ? t('uiStudioText104') : t('uiStudioText105'));
+        microphone.title = enabled ? t('uiStudioText104') : t('uiStudioText105');
       });
+      microphone.innerHTML = icon(media.microphoneEnabled() ? 'microphone' : 'microphone-off') + `<span>${media.microphoneEnabled() ? t('uiStudioText104') : t('uiStudioText105')}</span>`;
       microphone.setAttribute('aria-pressed', String(media.microphoneEnabled()));
+      microphone.setAttribute('aria-label', media.microphoneEnabled() ? t('uiStudioText104') : t('uiStudioText105'));
+      const camera = button('', 'button subtle media-toggle', () => {
+        const enabled = media.toggleCamera();
+        camera.innerHTML = icon(enabled ? 'camera' : 'camera-off') + `<span>${enabled ? t('uiStudioText119') : t('uiStudioText120')}</span>`;
+        camera.setAttribute('aria-pressed', String(enabled));
+        camera.setAttribute('aria-label', enabled ? t('uiStudioText119') : t('uiStudioText120'));
+        camera.title = enabled ? t('uiStudioText119') : t('uiStudioText120');
+      });
+      camera.innerHTML = icon(media.cameraEnabled() ? 'camera' : 'camera-off') + `<span>${media.cameraEnabled() ? t('uiStudioText119') : t('uiStudioText120')}</span>`;
+      camera.setAttribute('aria-pressed', String(media.cameraEnabled()));
+      camera.setAttribute('aria-label', media.cameraEnabled() ? t('uiStudioText119') : t('uiStudioText120'));
+      const cameraControls = media.cameraAvailable() ? [camera] : [];
       actions.append(button(t('uiStudioText82'), 'button primary', async () => {await this.api.request('POST', `/streams/${this.stream}/highlights`, {source: 'MANUAL', reason: t('uiStudioText83')}); toast(t('uiStudioText84'));}),
-        microphone, button(t('uiStudioText85'), 'button subtle', async () => {await media.captions(); toast(t('uiStudioText86'));}), button(t('uiStudioText87'), 'button danger', () => this.finish()));
+        microphone, ...cameraControls, button(t('uiStudioText85'), 'button subtle', async () => {await media.captions(); toast(t('uiStudioText86'));}), button(t('uiStudioText87'), 'button danger', () => this.finish()));
       left.append(actions);
     } else if (text(latest, 'status') === 'LIVE') {
       left.append(html(t('uiStudioText88')), button(t('uiStudioText89'), 'button danger', async () => {await this.api.request('POST', `/streams/${text(latest, 'id')}/end`, {}); await this.loadDashboard(true);}));
@@ -253,6 +268,7 @@ export class StreamGuardApp {
         if (!name.value.trim()) {toast(t('uiStudioText97'), true); return;} start.disabled = true;
         try {
           await media.prepare(shareScreen.control.checked);
+          if (media.usedCameraFallback()) toast(t('mediaScreenFallback'));
           const result = object(await this.api.request('POST', '/streams', {title: name.value, description: description.value, categoryId: categories.value}));
           this.stream = text(result, 'id'); this.broadcasting = true; media.connect(this.stream, true, event => this.realtime(event)); await this.loadDashboard(true);
         } catch (error) {if (!this.broadcasting) media.stop(); throw error;} finally {start.disabled = false;}
