@@ -1,4 +1,7 @@
 {
+  "skipToMainContent": "Saltar al contenido principal",
+  "mainNavigationLabel": "Navegación principal",
+  "uiMenuHide": "Ocultar menú",
   "mediaRelayConnecting": "Conectando el video por una ruta compatible con tu red…",
   "mediaRelayUnavailable": "No se pudo activar la conexión alternativa. Vuelve a entrar al directo.",
   "authProviderEmailRequired": "Necesita ser @gmail o @hotmail.",
