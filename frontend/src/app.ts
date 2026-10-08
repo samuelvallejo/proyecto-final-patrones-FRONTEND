@@ -228,7 +228,7 @@ export class StreamGuardApp {
       this.content.append(html(t('uiStudioText76') + escape(text(object(this.dashboard.channel), 'name')) + '.</div>'));
       if (text(latest, 'status') === 'LIVE') this.content.append(button(t('uiStudioText77'), 'button primary', () => {this.stream = text(latest, 'id'); this.route('watch');})); return;
     }
-    const layout = panel('studio-grid'), left = panel('surface'), right = panel('surface studio-side');
+    const layout = panel('studio-grid'), left = panel('surface'), right = panel('surface studio-assistant');
     left.append(html(t('uiStudioText78') + (this.broadcasting ? t('uiStudioText79') : t('uiStudioText80')) + "</span></div><div class='video-stage'><video id='live-video' autoplay playsinline muted></video><div class='video-placeholder' id='video-placeholder'>" + icon('video') + t('uiStudioText81')));
     if (this.broadcasting) {
       const actions = panel('action-row');
@@ -278,8 +278,11 @@ export class StreamGuardApp {
     const level = text(object(this.dashboard.policy), 'level');
     right.append(html(t('uiStudioText98') + icon('spark') + '</div>'), this.aiStatus(), html("<div class='assistant-card'><span class='shield-orb'>" + icon('shield') + t('uiStudioText99') + escape(levelName(level)) + t('uiStudioText100')),
       button(t('uiStudioText101'), 'button subtle full', () => this.route('moderation')), button(t('uiStudioText102'), 'button subtle full', () => this.route('settings')), html(t('uiStudioText103')));
-    layout.append(left, right); this.content.append(layout);
-    if (this.broadcasting) {this.content.append(this.chatPanel()); this.launch(() => this.loadMessages()); media.attach();}
+    layout.append(left);
+    if (this.broadcasting) layout.append(this.chatPanel());
+    else layout.style.gridTemplateColumns = 'minmax(0, 1fr)';
+    this.content.append(layout, right);
+    if (this.broadcasting) {this.launch(() => this.loadMessages()); media.attach();}
     if (this.broadcasting) this.content.append(this.collaborationPanel());
   }
   private async finish(): Promise<void> {

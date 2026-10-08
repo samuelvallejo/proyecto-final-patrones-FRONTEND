@@ -12,3 +12,5 @@
 /* Wait for bootstrap data before mounting interactive forms. */
 .startup-loading{min-height:100dvh;display:grid;place-items:center;color:var(--muted);padding:2rem;text-align:center}
 .form-hint,.password-strength{display:block;margin-top:6px;color:var(--muted);font-size:11px;line-height:1.6}.field-error,.strength-low{color:#ff929b}.strength-medium{color:#e8c574}.strength-high{color:var(--lime)}
+
+.studio-grid>.chat-panel{display:flex;flex-direction:column;align-self:stretch;min-width:0}.studio-grid>.chat-panel .chat-list{flex:1;min-height:220px;max-height:560px}.studio-assistant{margin-top:24px}
