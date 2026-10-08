@@ -76,4 +76,4 @@ La configuración del repositorio publica `frontend/dist` en Vercel o Firebase H
 
 ## Resultado de esta revisión
 
-Se documentó la migración y el estado actual del frontend: TypeScript estricto, módulos, comandos y configuración de despliegue. Este cambio solo actualiza documentación; no modifica la lógica de la aplicación ni el backend.
+Se amplió la guía de TypeScript y se mejoró la navegación accesible: hay un enlace para saltar al contenido, regiones principales identificadas, estado de la página actual en la navegación y nombres accesibles para búsqueda y menú móvil. Estos cambios se limitan al frontend y no modifican el backend ni los flujos de negocio.
