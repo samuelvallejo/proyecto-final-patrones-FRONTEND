@@ -61,15 +61,21 @@ export class StreamGuardApp {
   private launch(action: () => Promise<void>): void {void action().catch(error => toast(error instanceof Error ? error.message : t('uiOnErrorText04'), true));}
   private shell(): void {
     this.root.replaceChildren(); this.root.className = 'app-shell';
-    const side = panel('sidebar'); side.append(html(t('uiShellText05') + icon('shield') + t('uiShellText06')), html(t('uiShellText07')));
+    const skipLink = document.createElement('a'); skipLink.className = 'skip-link'; skipLink.href = '#page-content'; skipLink.textContent = t('skipToMainContent');
+    const side = panel('sidebar'); side.append(html(t('uiShellText05') + icon('shield') + t('uiShellText06')));
     side.querySelector('.brand')?.addEventListener('click', event => {event.preventDefault(); this.route('explore');});
     const first = panel('nav-list'); first.append(this.navButton('explore', t('uiShellText08'), 'grid'), this.navButton('studio', t('myStudio'), 'video'));
     const second = panel('nav-list'); second.append(this.navButton('moderation', t('uiShellText10'), 'shield'), this.navButton('clips', t('uiShellText11'), 'play'), this.navButton('assistant', t('uiShellText12'), 'spark'), this.navButton('settings', t('uiShellText13'), 'settings'));
-    side.append(first, html(t('uiShellText09')), second, html(t('uiShellText14')));
+    const navigation = document.createElement('nav'); navigation.id = 'main-navigation'; navigation.setAttribute('aria-label', t('mainNavigationLabel'));
+    navigation.append(html(t('uiShellText07')), first, html(t('uiShellText09')), second);
+    side.append(navigation, html(t('uiShellText14')));
     const main = panel('main-shell'), header = panel('topbar');
-    const menu = button('☰', 'menu-button', () => {this.mobileNav = !this.mobileNav; this.root.className = `app-shell${this.mobileNav ? ' nav-open' : ''}`;});
-    menu.setAttribute('aria-label', t('uiShellText15'));
-    const find = panel('global-search'), query = input(t('uiShellText16'), this.search);
+    const menu = button('☰', 'menu-button', () => {
+      this.mobileNav = !this.mobileNav; this.root.className = `app-shell${this.mobileNav ? ' nav-open' : ''}`;
+      menu.setAttribute('aria-expanded', String(this.mobileNav)); menu.setAttribute('aria-label', t(this.mobileNav ? 'uiMenuHide' : 'uiShellText15'));
+    });
+    menu.setAttribute('aria-label', t('uiShellText15')); menu.setAttribute('aria-expanded', String(this.mobileNav)); menu.setAttribute('aria-controls', 'main-navigation');
+    const find = panel('global-search'), query = input(t('uiShellText16'), this.search); query.setAttribute('aria-label', t('uiShellText16'));
     query.addEventListener('keydown', event => {if (event.key === 'Enter') {this.search = query.value; this.route('explore');}});
     find.append(html(icon('search')), query);
     const account = panel('account-actions'); account.append(html(t('uiShellText17')));
@@ -78,12 +84,13 @@ export class StreamGuardApp {
       const badge = button(text(this.user, 'username').slice(0, 1).toUpperCase(), 'avatar', () => this.route('account')); badge.setAttribute('aria-label', t('myAccount'));
       account.append(button(t('uiShellText19'), 'button icon-button', () => this.notifications()), badge);
     }
-    header.append(menu, find, account); this.content = panel('page-content'); main.append(header, this.content); this.root.append(side, main);
+    header.append(menu, find, account); this.content = panel('page-content'); this.content.id = 'page-content'; this.content.setAttribute('role', 'main'); this.content.tabIndex = -1;
+    main.append(header, this.content); this.root.append(skipLink, side, main);
   }
   private navButton(key: Screen, label: string, glyph: string): HTMLButtonElement {
     const control = button(label, `nav-item${this.screen === key ? ' active' : ''}`, () => this.route(key));
     control.innerHTML = icon(glyph) + `<span>${escape(label)}</span>` + (key === 'moderation' ? t('uiNavButtonText20') : '');
-    control.setAttribute('aria-label', label); return control;
+    control.setAttribute('aria-label', label); if (this.screen === key) control.setAttribute('aria-current', 'page'); return control;
   }
   private route(next: Screen): void {
     this.clearCollaboration();
