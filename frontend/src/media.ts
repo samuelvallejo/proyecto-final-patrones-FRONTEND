@@ -1,6 +1,8 @@
 import {t, type TranslationKey} from './i18n';
 import {liveEvent, object, text, type Json, type LiveEvent, type MediaConfig} from './contracts';
 import {relay} from './relay';
+import {acquireSources, browserCaptureEnvironment, mediaErrorName, screenCaptureSupported} from './capture';
+import {compositeVideo, type CompositeVideo} from './compositor';
 
 interface Segment {blob: Blob; start: number; end: number}
 interface SpeechResult {isFinal: boolean; [index: number]: {transcript: string}}
@@ -23,7 +25,7 @@ interface MediaState {
   api: string; token: string; config: MediaConfig;
   local: MediaStream | null; remote: MediaStream | null; ws: WebSocket | null;
   microphone: MediaStreamTrack | null;
-  camera: MediaStreamTrack | null; cameraFallback: boolean;
+  camera: MediaStreamTrack | null; cameraFallback: boolean; composite: CompositeVideo | null;
   captures: MediaStream[]; mixer: AudioContext | null;
   peers: Map<string, RTCPeerConnection>; pending: Map<string, RTCIceCandidateInit[]>;
   host: boolean; stream: string; started: number; recorderStarted: number;
@@ -36,7 +38,7 @@ interface MediaState {
 }
 const state: MediaState = {
   api: '', token: '', config: {}, local: null, remote: null, ws: null,
-  microphone: null, camera: null, cameraFallback: false,
+  microphone: null, camera: null, cameraFallback: false, composite: null,
   captures: [], mixer: null,
   peers: new Map(), pending: new Map(), host: false, stream: '', started: 0,
   recorderStarted: 0, segments: [], recorder: null, callback: () => {},
@@ -47,10 +49,12 @@ export function messageForError(error: unknown): string {
   const keys: Record<string, TranslationKey> = {
     NotAllowedError: 'mediaPermissionDenied', SecurityError: 'mediaPermissionDenied',
     NotFoundError: 'mediaDeviceMissing', NotReadableError: 'mediaDeviceBusy',
-    OverconstrainedError: 'mediaConstraintsFailed',
+    OverconstrainedError: 'mediaConstraintsFailed', AbortError: 'mediaCaptureAborted',
+    InvalidStateError: 'mediaCaptureNeedsFocus', NotSupportedError: 'mediaCaptureUnsupported', TypeError: 'mediaCaptureUnsupported',
   };
+  const name = mediaErrorName(error);
+  const key = keys[name]; if (key) return t(key);
   if (error instanceof Error) {
-    const key = keys[error.name]; if (key) return t(key);
     if (error.name === 'Error' && error.message) return error.message;
   }
   console.error('Browser media operation failed', error); return t('mediaConnectionFailed');
@@ -80,13 +84,6 @@ function closePeers(): void { for (const peer of state.peers.values()) peer.clos
 function recorderType(): string | undefined {
   return ['video/webm;codecs=vp8,opus', 'video/webm', 'video/mp4'].find(type => window.MediaRecorder?.isTypeSupported(type));
 }
-async function useCameraAndMicrophone(): Promise<void> {
-  state.local = await navigator.mediaDevices.getUserMedia({video: {width: {ideal: 1280}, height: {ideal: 720}, frameRate: {ideal: 24}}, audio: {echoCancellation: true, noiseSuppression: true, autoGainControl: true}});
-  state.microphone = state.local.getAudioTracks()[0] ?? null;
-  state.camera = state.local.getVideoTracks()[0] ?? null;
-  if (!state.microphone) throw new Error(t('mediaMicrophoneMissing'));
-  if (!state.camera) throw new Error(t('mediaCameraMissing'));
-}
 function useRelay(): void {
   window.clearTimeout(state.fallbackTimer); state.fallbackTimer = undefined;
   if (state.stopping || state.host || !state.config.mediaRelayConfigured || relay.viewerActive()) return;
@@ -102,59 +99,37 @@ function awaitVideo(): void {
   }, 8000);
 }
 async function prepare(screen: boolean): Promise<void> {
-  if (!navigator.mediaDevices) throw new Error(t('mediaText02'));
-  if (!recorderType()) throw new Error(t('mediaText03'));
+  if (!navigator.mediaDevices?.getUserMedia) throw new Error(t('mediaText02'));
   stop(); state.stopping = false;
-  let microphoneStream: MediaStream | null = null;
-  let displayStream: MediaStream | null = null;
-  state.cameraFallback = false;
   try {
-    if (screen && typeof navigator.mediaDevices.getDisplayMedia === 'function') {
-      // Open the screen chooser during the initiating user gesture. Microphone
-      // permission is independent of the optional system-audio selection.
-      try {
-        displayStream = await navigator.mediaDevices.getDisplayMedia({video: {frameRate: 24}, audio: true});
-      } catch (error) {
-        if (!(error instanceof Error) || !['NotSupportedError', 'TypeError'].includes(error.name)) throw error;
-        state.cameraFallback = true;
-        await useCameraAndMicrophone();
-      }
-      if (!displayStream) {
-        // Some mobile browsers expose getDisplayMedia but do not implement it.
-      } else {
-      state.captures.push(displayStream);
-      microphoneStream = await navigator.mediaDevices.getUserMedia({audio: {echoCancellation: true, noiseSuppression: true, autoGainControl: true}});
-      state.captures.push(microphoneStream);
-      const microphone = microphoneStream.getAudioTracks()[0];
-      if (!microphone) throw new Error(t('mediaMicrophoneMissing'));
-      state.microphone = microphone;
-      let audioTracks = [microphone];
-      if (displayStream.getAudioTracks().length) {
+    const captured = await acquireSources(screen, browserCaptureEnvironment());
+    state.captures.push(captured.devices);
+    if (captured.display) state.captures.push(captured.display);
+    state.microphone = captured.devices.getAudioTracks()[0] ?? null;
+    state.camera = captured.devices.getVideoTracks()[0] ?? null;
+    state.cameraFallback = captured.cameraFallback;
+    if (!state.microphone || (!captured.display && !state.camera)) throw new Error(t('mediaDeviceMissing'));
+    let audioTracks = [state.microphone];
+    if (captured.display) {
+      if (captured.display.getAudioTracks().length) {
         const Audio = window.AudioContext || window.webkitAudioContext;
         if (Audio) {
           const mixer = new Audio(); state.mixer = mixer;
           const destination = mixer.createMediaStreamDestination();
-          mixer.createMediaStreamSource(displayStream).connect(destination);
-          mixer.createMediaStreamSource(microphoneStream).connect(destination);
+          mixer.createMediaStreamSource(captured.display).connect(destination);
+          mixer.createMediaStreamSource(new MediaStream([state.microphone])).connect(destination);
           void mixer.resume().catch(() => {}); audioTracks = destination.stream.getAudioTracks();
         }
       }
-      state.local = new MediaStream([...displayStream.getVideoTracks(), ...audioTracks]);
+      if (state.camera) {
+        try {state.composite = compositeVideo(captured.display, captured.devices);}
+        catch {throw new Error(t('mediaCompositorUnsupported'));}
       }
-    } else {
-      state.cameraFallback = screen;
-      await useCameraAndMicrophone();
-    }
-  } catch (error) {
-    microphoneStream?.getTracks().forEach(track => track.stop());
-    displayStream?.getTracks().forEach(track => track.stop());
-    stop();
-    if (screen && displayStream && !microphoneStream && error instanceof DOMException && error.name === 'NotAllowedError') {
-      throw new Error(t('mediaMicrophonePermissionDenied'));
-    }
-    throw new Error(messageForError(error));
-  }
-  state.local?.getVideoTracks()[0]?.addEventListener('ended', () => {if (state.host) stop();});
+      state.local = new MediaStream([...(state.composite ? [state.composite.track] : captured.display.getVideoTracks()), ...audioTracks]);
+      captured.display.getVideoTracks()[0]?.addEventListener('ended', () => {if (state.host) stop();});
+    } else state.local = captured.devices;
+    state.local.getVideoTracks()[0]?.addEventListener('ended', () => {if (state.host) stop();});
+  } catch (error) {stop(); throw new Error(messageForError(error));}
   state.host = true; attach();
 }
 function createPeer(id: string): RTCPeerConnection {
@@ -212,7 +187,7 @@ function connect(stream: string, host: boolean, callback: (event: LiveEvent) => 
         joined = true; state.reconnectAttempts = 0;
         state.keepAliveTimer = window.setInterval(() => send({type: 'ping'}), 20000);
         if (host && !state.recorder) {state.started = Date.now(); startRecording(); startAudio();}
-        if (host && state.config.mediaRelayConfigured) relay.start(state.api, state.token, stream, state.local, recorderType() ?? '', message => emit({type: 'notice', body: message}));
+        if (host && state.config.mediaRelayConfigured && recorderType()) relay.start(state.api, state.token, stream, state.local, recorderType() ?? '', message => emit({type: 'notice', body: message}));
         if (!host && event.hostOnline) awaitVideo();
         attach();
       }
@@ -249,6 +224,7 @@ function connect(stream: string, host: boolean, callback: (event: LiveEvent) => 
 }
 function startRecording(): void {
   if (!state.local || state.stopping) return;
+  if (!recorderType()) {emit({type: 'notice', body: t('mediaRecordingUnavailable')}); return;}
   const chunks: Blob[] = []; const start = Math.floor((Date.now() - state.started) / 1000);
   const recorder = new MediaRecorder(state.local, {mimeType: recorderType(), videoBitsPerSecond: 1200000, audioBitsPerSecond: 64000});
   state.recorder = recorder; state.recorderStarted = Date.now();
@@ -265,6 +241,7 @@ function startRecording(): void {
   state.interval = window.setTimeout(() => {if (recorder.state === 'recording') recorder.stop();}, 15000);
 }
 function capture(highlight: string): void {
+  if (!recorderType()) {emit({type: 'capture-status', message: t('mediaRecordingUnavailable'), error: true}); return;}
   if (state.capture) {emit({type: 'capture-status', message: t('mediaText09'), error: true}); return;}
   const currentSeconds = state.recorder ? (Date.now() - state.recorderStarted) / 1000 : 0;
   if (state.recorder?.state === 'recording' && currentSeconds >= 2) {state.capture = highlight; window.clearTimeout(state.interval); state.recorder.stop();}
@@ -342,6 +319,7 @@ function stop(): void {
   if (state.speech) {const speech = state.speech; state.speech = null; speech.onend = null; speech.stop();}
   if (state.audio) {void state.audio.close().catch(() => {}); state.audio = null;}
   if (state.mixer) {void state.mixer.close().catch(() => {}); state.mixer = null;}
+  state.composite?.stop(); state.composite = null;
   for (const capture of state.captures) capture.getTracks().forEach(track => track.stop()); state.captures = [];
   if (state.local) {for (const track of state.local.getTracks()) track.stop(); state.local = null;}
   state.microphone = null;
@@ -366,6 +344,7 @@ export const media = {
     return state.camera.enabled;
   },
   usedCameraFallback(): boolean {return state.cameraFallback;},
+  screenSharingSupported(): boolean {return Boolean(navigator.mediaDevices) && screenCaptureSupported(browserCaptureEnvironment());},
 };
 window.StreamMedia = media;
 window.addEventListener('beforeunload', stop);

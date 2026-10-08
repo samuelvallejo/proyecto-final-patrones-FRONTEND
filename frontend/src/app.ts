@@ -252,9 +252,10 @@ export class StreamGuardApp {
       camera.innerHTML = icon(media.cameraEnabled() ? 'camera' : 'camera-off') + `<span>${media.cameraEnabled() ? t('uiStudioText119') : t('uiStudioText120')}</span>`;
       camera.setAttribute('aria-pressed', String(media.cameraEnabled()));
       camera.setAttribute('aria-label', media.cameraEnabled() ? t('uiStudioText119') : t('uiStudioText120'));
-      const cameraControls = media.cameraAvailable() ? [camera] : [];
+      camera.disabled = !media.cameraAvailable();
+      camera.title = camera.disabled ? t('mediaCameraMissing') : (media.cameraEnabled() ? t('uiStudioText119') : t('uiStudioText120'));
       actions.append(button(t('uiStudioText82'), 'button primary', async () => {await this.api.request('POST', `/streams/${this.stream}/highlights`, {source: 'MANUAL', reason: t('uiStudioText83')}); toast(t('uiStudioText84'));}),
-        microphone, ...cameraControls, button(t('uiStudioText85'), 'button subtle', async () => {await media.captions(); toast(t('uiStudioText86'));}), button(t('uiStudioText87'), 'button danger', () => this.finish()));
+        microphone, camera, button(t('uiStudioText85'), 'button subtle', async () => {await media.captions(); toast(t('uiStudioText86'));}), button(t('uiStudioText87'), 'button danger', () => this.finish()));
       left.append(actions);
     } else if (text(latest, 'status') === 'LIVE') {
       left.append(html(t('uiStudioText88')), button(t('uiStudioText89'), 'button danger', async () => {await this.api.request('POST', `/streams/${text(latest, 'id')}/end`, {}); await this.loadDashboard(true);}));
@@ -263,7 +264,12 @@ export class StreamGuardApp {
       const categories = select(this.categories.map(row => [text(row, 'name'), text(row, 'id')]));
       const shareScreen = checkbox(t('uiStudioText92')); const row = panel('form-row');
       row.append(field(t('uiStudioText94'), categories), field(t('uiCreateChannelText64'), description));
+      shareScreen.control.disabled = !media.screenSharingSupported();
+      if (shareScreen.control.disabled) shareScreen.control.checked = false;
       form.append(field(t('uiStudioText93'), name), row, shareScreen.element);
+      const mediaHint = panel('capture-hint');
+      mediaHint.textContent = shareScreen.control.disabled ? t('mediaMobileCameraHint') : t('mediaDevicePermissionsHint');
+      form.append(mediaHint);
       const start = button(t('uiStudioText96'), 'button primary', async () => {
         if (!name.value.trim()) {toast(t('uiStudioText97'), true); return;} start.disabled = true;
         try {

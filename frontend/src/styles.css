@@ -14,3 +14,5 @@
 .form-hint,.password-strength{display:block;margin-top:6px;color:var(--muted);font-size:11px;line-height:1.6}.field-error,.strength-low{color:#ff929b}.strength-medium{color:#e8c574}.strength-high{color:var(--lime)}
 
 .studio-grid>.chat-panel{display:flex;flex-direction:column;align-self:stretch;min-width:0}.studio-grid>.chat-panel .chat-list{flex:1;min-height:220px;max-height:560px}.studio-assistant{margin-top:24px}
+
+.capture-hint{color:var(--muted);font-size:12px;line-height:1.6;margin:0 0 16px}.setting-checkbox:has(input:disabled){opacity:.65}

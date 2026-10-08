@@ -10,7 +10,8 @@
     "typecheck": "tsc --noEmit -p frontend/tsconfig.json && tsc --noEmit -p frontend/tsconfig.worker.json",
     "build": "node scripts/build-web.mjs",
     "preview": "node scripts/serve-web.mjs",
-    "check:localization": "node scripts/check-localization.mjs"
+    "check:localization": "node scripts/check-localization.mjs",
+    "test:media": "node --test scripts/media-test.cjs"
   },
   "devDependencies": {
     "playwright": "1.62.1",
