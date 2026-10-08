@@ -60,6 +60,7 @@ export function icon(key: string): string {
     microphone: "<rect x='9' y='2' width='6' height='12' rx='3'/><path d='M5 10a7 7 0 0 0 14 0M12 17v5M8 22h8'/>",
     'microphone-off': "<path d='M9 9V5a3 3 0 0 1 5.8-1M15 9v3M5 10a7 7 0 0 0 11.7 5.2M19 10a7 7 0 0 1-.5 2.6M12 17v5M8 22h8M3 3l18 18'/>",
     camera: "<rect x='3' y='6' width='13' height='12' rx='3'/><path d='m16 10 5-3v10l-5-3Z'/>",
+    'camera-switch': "<path d='M4 7h3l2-3h6l2 3h3v13H4Z'/><path d='M8 12a4 4 0 0 1 7-1M16 15a4 4 0 0 1-7 1M15 8v3h-3M9 19v-3h3'/>",
     'camera-off': "<path d='m3 3 18 18M10 6h6a3 3 0 0 1 3 3v1l2-1v8l-3-2a3 3 0 0 1-3 3H6a3 3 0 0 1-3-3V9a3 3 0 0 1 3-3'/>",
     play: "<rect x='3' y='3' width='18' height='18' rx='5'/><path d='m10 8 6 4-6 4Z'/>",
     search: "<circle cx='10' cy='10' r='6'/><path d='m15 15 6 6'/>",

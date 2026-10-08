@@ -44,7 +44,7 @@ test('Android with an exposed but unsupported screen API requests camera and mic
   assert.equal(sources.cameraFallback, true);
   assert.equal(sources.display, null);
   assert.equal(fixture.constraints.length, 1);
-  assert.equal(fixture.constraints[0].video.facingMode, 'user');
+  assert.equal(fixture.constraints[0].video.facingMode.ideal, 'user');
   assert.equal(Boolean(fixture.constraints[0].audio), true);
 });
 test('iPad desktop mode does not offer unsupported screen capture', () => {
@@ -138,4 +138,44 @@ test('Permission failures return useful Spanish feedback rather than the generic
   const harness = mediaHarness(environment('Android'));
   assert.equal(harness.media.messageForError({name: 'NotAllowedError'}), spanish.mediaPermissionDenied);
   assert.equal(harness.media.messageForError({name: 'NotFoundError'}), spanish.mediaDeviceMissing);
+});
+
+test('Changing phone lenses keeps the outgoing video and microphone alive and retains mute', async () => {
+  const fixture = environment('iPhone'), harness = mediaHarness(fixture);
+  await harness.media.prepare(false);
+  const rear = track('video'); harness.media.toggleCamera();
+  fixture.environment.devices.getUserMedia = async constraints => {
+    assert.equal(fixture.camera.stopped, true);
+    assert.equal(constraints.audio, false);
+    assert.equal(constraints.video.facingMode.exact, 'environment');
+    return new Stream([rear]);
+  };
+  await harness.media.switchCamera();
+  assert.equal(harness.media.cameraFacing(), 'environment');
+  assert.equal(rear.enabled, false);
+  assert.equal(fixture.microphone.stopped, false); assert.equal(harness.output.stopped, false);
+  harness.media.stop(); assert.equal(rear.stopped, true);
+});
+
+test('A missing rear camera restores the original lens and reports a specific Spanish error', async () => {
+  const fixture = environment('iPhone'), harness = mediaHarness(fixture);
+  await harness.media.prepare(false);
+  const replacement = track('video'); let calls = 0;
+  fixture.environment.devices.getUserMedia = async constraints => {
+    if (++calls === 1) throw {name: 'OverconstrainedError'};
+    assert.equal(constraints.video.facingMode.ideal, 'user');
+    return new Stream([replacement]);
+  };
+  await assert.rejects(harness.media.switchCamera(), error => error.message === spanish.mediaOtherCameraMissing);
+  assert.equal(harness.media.cameraAvailable(), true); assert.equal(harness.media.cameraFacing(), 'user');
+  assert.equal(fixture.microphone.stopped, false); harness.media.stop();
+});
+
+test('Ending a broadcast during a lens permission prompt releases the late result', async () => {
+  const fixture = environment('iPhone'), harness = mediaHarness(fixture);
+  await harness.media.prepare(false);
+  const rear = track('video'); let resolve;
+  fixture.environment.devices.getUserMedia = () => new Promise(done => {resolve = done;});
+  const pending = harness.media.switchCamera(); harness.media.stop(); resolve(new Stream([rear]));
+  await pending; assert.equal(rear.stopped, true); assert.equal(harness.media.cameraAvailable(), false);
 });

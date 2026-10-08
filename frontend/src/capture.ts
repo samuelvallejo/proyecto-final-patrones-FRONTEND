@@ -18,7 +18,7 @@ export function browserCaptureEnvironment(): CaptureEnvironment {
   return {devices: navigator.mediaDevices, userAgent: navigator.userAgent,
     platform: navigator.platform, maxTouchPoints: navigator.maxTouchPoints};
 }
-export async function acquireSources(screen: boolean, environment: CaptureEnvironment): Promise<CapturedSources> {
+export async function acquireSources(screen: boolean, environment: CaptureEnvironment, facing: 'user' | 'environment' = 'user'): Promise<CapturedSources> {
   let display: MediaStream | null = null;
   let devices: MediaStream | null = null;
   let cameraFallback = screen && !screenCaptureSupported(environment);
@@ -34,7 +34,7 @@ export async function acquireSources(screen: boolean, environment: CaptureEnviro
     }
     try {
       devices = await environment.devices.getUserMedia({
-        video: {width: {ideal: 1280}, height: {ideal: 720}, frameRate: {ideal: 24}, facingMode: 'user'},
+        video: {width: {ideal: 1280}, height: {ideal: 720}, frameRate: {ideal: 24}, facingMode: {ideal: facing}},
         audio: {echoCancellation: true, noiseSuppression: true, autoGainControl: true},
       });
     } catch (error) {

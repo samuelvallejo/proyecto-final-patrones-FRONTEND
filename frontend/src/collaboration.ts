@@ -13,6 +13,11 @@ export class CollaborationTile {
   private fragments: ArrayBuffer[] = [];
   private format = '';
   private retryTimer = 0;
+  private signalRetry = 0;
+  private heartbeat = 0;
+  private fallbackTimer = 0;
+  private mediaUrl = '';
+  private fragmentMode = false;
   private live = true;
   constructor(
     private readonly video: HTMLVideoElement,
@@ -23,12 +28,22 @@ export class CollaborationTile {
   ) {}
 
   start(): void {
+    if (!this.live) return;
     this.video.muted = true;
     const socket = new WebSocket(`${this.api.replace(/^http/, 'ws')}/ws`);
     this.socket = socket;
-    socket.onopen = () => socket.send(JSON.stringify({type: 'join', streamId: this.stream, token: this.token, host: false}));
+    socket.onopen = () => {
+      socket.send(JSON.stringify({type: 'join', streamId: this.stream, token: this.token, host: false}));
+      this.heartbeat = window.setInterval(() => {if (socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify({type: 'ping'}));}, 20000);
+    };
     socket.onmessage = event => {void this.handleSignalMessage(String(event.data), socket);};
-    socket.onclose = () => {if (this.live) this.waiting(t('collaborationDisconnected'));};
+    socket.onclose = () => {
+      window.clearInterval(this.heartbeat);
+      if (this.live) {
+        this.peer?.close(); this.peer = null; this.pending = []; this.closeRelay();
+        this.waiting(t('collaborationDisconnected')); this.signalRetry = window.setTimeout(() => this.start(), 3000);
+      }
+    };
     socket.onerror = () => this.waiting(t('collaborationConnecting'));
   }
 
@@ -37,13 +52,13 @@ export class CollaborationTile {
     try {
       const event = JSON.parse(raw) as {type?: string; hostOnline?: boolean; from?: string; payload?: SignalPayload; message?: string};
       if (event.type === 'joined') {
-        if (event.hostOnline) this.connectRelay(); else this.waiting(t('collaborationWaiting'));
+        if (event.hostOnline) this.awaitRelay(); else this.waiting(t('collaborationWaiting'));
       } else if (event.type === 'presence') {
-        if (event.hostOnline) this.connectRelay(); else {this.peer?.close(); this.peer = null; this.closeRelay(); this.waiting(t('collaborationWaiting'));}
+        if (event.hostOnline) this.awaitRelay(); else {this.peer?.close(); this.peer = null; this.pending = []; this.closeRelay(); this.waiting(t('collaborationWaiting'));}
       } else if (event.type === 'signal' && event.payload) {
         await this.accept(event.from, event.payload);
       } else if (event.type === 'ended') {
-        this.waiting(t('collaborationStreamEnded'));
+        this.stop(); this.waiting(t('collaborationStreamEnded'));
       } else if (event.type === 'error') {
         this.waiting(event.message || t('collaborationUnavailable'));
       }
@@ -65,7 +80,7 @@ export class CollaborationTile {
         const current = this.video.srcObject instanceof MediaStream ? this.video.srcObject : new MediaStream();
         current.addTrack(event.track); this.video.srcObject = current;
       }
-      this.waiting(''); void this.video.play().catch(() => {});
+      this.video.onplaying = () => this.waiting(''); void this.video.play().catch(() => {});
     };
     peer.onconnectionstatechange = () => {
       if (peer.connectionState === 'connected') {this.closeRelay(true); this.waiting('');}
@@ -85,6 +100,11 @@ export class CollaborationTile {
     }
   }
 
+  private awaitRelay(): void {
+    if (this.fallbackTimer || this.peer?.connectionState === 'connected' || this.relaySocket) return;
+    this.fallbackTimer = window.setTimeout(() => {this.fallbackTimer = 0; this.connectRelay();}, 8000);
+  }
+
   private connectRelay(): void {
     if (!this.live || this.relaySocket) return;
     const socket = new WebSocket(`${this.api.replace(/^http/, 'ws')}/ws/media`);
@@ -92,7 +112,12 @@ export class CollaborationTile {
     socket.onopen = () => socket.send(JSON.stringify({type: 'join', streamId: this.stream, token: this.token, host: false, format: ''}));
     socket.onmessage = event => {
       if (this.relaySocket !== socket) return;
-      if (event.data instanceof ArrayBuffer) {this.fragments.push(event.data); if (this.fragments.length > 4) this.fragments.shift(); this.appendFragment(); return;}
+      if (event.data instanceof ArrayBuffer) {
+        this.fragments.push(event.data); if (this.fragments.length > 3) this.fragments.shift();
+        if (this.fragmentMode) {if (this.video.ended || !this.video.getAttribute('src')) this.nextFragment();}
+        else this.appendFragment();
+        return;
+      }
       try {
         const data = JSON.parse(String(event.data)) as {type?: string; format?: string; message?: string};
         if (data.type === 'relay-format' && data.format) this.prepareRelay(data.format);
@@ -103,17 +128,29 @@ export class CollaborationTile {
   }
 
   private prepareRelay(format: string): void {
-    if (this.format === format && this.mediaSource?.readyState === 'open') return;
+    if (this.format === format && (this.mediaSource || this.fragmentMode)) return;
     this.format = format;
-    if (!window.MediaSource || !MediaSource.isTypeSupported(format)) {this.waiting(t('collaborationBrowserUnsupported')); return;}
-    if (this.video.src) URL.revokeObjectURL(this.video.src);
+    this.video.onplaying = () => this.waiting('');
+    if (!window.MediaSource || !MediaSource.isTypeSupported(format)) {
+      this.fragmentMode = true; this.video.srcObject = null;
+      this.video.removeAttribute('src'); this.video.onended = () => this.nextFragment(); this.nextFragment(); return;
+    }
+    if (this.mediaUrl) URL.revokeObjectURL(this.mediaUrl);
     this.mediaSource = new MediaSource(); this.sourceBuffer = null;
-    this.video.srcObject = null; this.video.src = URL.createObjectURL(this.mediaSource);
+    this.video.srcObject = null; this.mediaUrl = URL.createObjectURL(this.mediaSource); this.video.src = this.mediaUrl;
     this.mediaSource.addEventListener('sourceopen', () => {
       if (!this.mediaSource || this.mediaSource.readyState !== 'open') return;
       try {
         this.sourceBuffer = this.mediaSource.addSourceBuffer(format); this.sourceBuffer.mode = 'sequence';
-        this.sourceBuffer.addEventListener('updateend', () => this.appendFragment()); this.appendFragment();
+        this.sourceBuffer.addEventListener('updateend', () => {
+          const buffer = this.sourceBuffer;
+          if (buffer?.buffered.length) {
+            const end = buffer.buffered.end(buffer.buffered.length - 1);
+            if (end - this.video.currentTime > 7) this.video.currentTime = Math.max(0, end - 3);
+            void this.video.play().catch(() => {});
+          }
+          this.appendFragment();
+        }); this.appendFragment();
       } catch {this.waiting(t('collaborationBrowserUnsupported'));}
     }, {once: true});
   }
@@ -121,16 +158,28 @@ export class CollaborationTile {
   private appendFragment(): void {
     if (!this.live || !this.sourceBuffer || this.sourceBuffer.updating || !this.fragments.length) return;
     if (this.mediaSource?.readyState !== 'open') return;
-    try {this.sourceBuffer.appendBuffer(this.fragments.shift()!); void this.video.play().catch(() => {}); this.waiting('');}
+    if (this.video.currentTime > 25 && this.sourceBuffer.buffered.length && this.sourceBuffer.buffered.start(0) < this.video.currentTime - 20) {
+      this.sourceBuffer.remove(0, this.video.currentTime - 20); return;
+    }
+    try {this.sourceBuffer.appendBuffer(this.fragments.shift()!); void this.video.play().catch(() => {});}
     catch {this.fragments = [];}
   }
 
+  private nextFragment(): void {
+    if (!this.live || !this.fragments.length) return;
+    if (this.mediaUrl) URL.revokeObjectURL(this.mediaUrl);
+    this.mediaUrl = URL.createObjectURL(new Blob([this.fragments.shift()!], {type: this.format}));
+    this.video.src = this.mediaUrl; void this.video.play().catch(() => {});
+  }
+
   private closeRelay(preserveVideo = false): void {
+    window.clearTimeout(this.fallbackTimer); this.fallbackTimer = 0;
     window.clearTimeout(this.retryTimer); this.retryTimer = 0;
     const previous = this.relaySocket; this.relaySocket = null;
     if (previous) {previous.onclose = null; previous.close();}
     this.sourceBuffer = null; this.mediaSource = null; this.fragments = [];
-    if (this.video.src) {URL.revokeObjectURL(this.video.src); this.video.removeAttribute('src');}
+    this.format = ''; this.fragmentMode = false; this.video.onended = null;
+    if (this.mediaUrl) {URL.revokeObjectURL(this.mediaUrl); this.mediaUrl = ''; this.video.removeAttribute('src');}
     if (!preserveVideo) this.video.srcObject = null;
   }
 
@@ -140,7 +189,7 @@ export class CollaborationTile {
   }
 
   stop(): void {
-    this.live = false; window.clearTimeout(this.retryTimer);
+    this.live = false; window.clearTimeout(this.retryTimer); window.clearTimeout(this.signalRetry); window.clearInterval(this.heartbeat);
     const socket = this.socket; this.socket = null; if (socket) {socket.onclose = null; socket.close();}
     this.closeRelay(); this.peer?.close(); this.peer = null; this.pending = [];
     this.video.pause(); this.video.srcObject = null; this.video.removeAttribute('src');

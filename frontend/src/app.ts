@@ -34,6 +34,8 @@ export class StreamGuardApp {
   private collaborationPrimary: HTMLDivElement | null = null;
   private collaborationGrid: HTMLDivElement | null = null;
   private collaborationSection: HTMLDivElement | null = null;
+  private collaborationPlayer: HTMLDivElement | null = null;
+  private collaborationCard: HTMLDivElement | null = null;
 
   constructor(private readonly root: HTMLElement) {
     this.api.onUnauthorized = () => {this.user = null; this.configureMedia();};
@@ -84,7 +86,7 @@ export class StreamGuardApp {
     control.setAttribute('aria-label', label); return control;
   }
   private route(next: Screen): void {
-    if (next !== 'watch') this.clearCollaboration();
+    this.clearCollaboration();
     if (!this.broadcasting && this.screen === 'watch') media.stop();
     this.screen = next; this.mobileNav = false; this.epoch++; this.messageIds.clear(); this.audience = null;
     this.shell(); this.launch(() => this.render());
@@ -222,6 +224,7 @@ export class StreamGuardApp {
   }
   private owner(): boolean {return this.user !== null && text(object(this.dashboard.channel), 'owner_id') === text(this.user, 'id');}
   private studio(): void {
+    this.clearCollaboration();
     this.title(t('uiStudioText74'), t('studioGreeting') + text(this.user, 'username') + ' ✦', t('uiStudioText75')); this.stats();
     const latest = object(this.dashboard.stream);
     if (!this.owner()) {
@@ -254,8 +257,21 @@ export class StreamGuardApp {
       camera.setAttribute('aria-label', media.cameraEnabled() ? t('uiStudioText119') : t('uiStudioText120'));
       camera.disabled = !media.cameraAvailable();
       camera.title = camera.disabled ? t('mediaCameraMissing') : (media.cameraEnabled() ? t('uiStudioText119') : t('uiStudioText120'));
+      const switchCamera = button('', 'button subtle media-toggle', async () => {
+        switchCamera.disabled = true; camera.disabled = true;
+        try {await media.switchCamera();}
+        finally {
+          switchCamera.disabled = !media.cameraAvailable(); camera.disabled = !media.cameraAvailable();
+          updateCameraLabel();
+        }
+      });
+      const updateCameraLabel = (): void => {
+        switchCamera.innerHTML = icon('camera-switch') + `<span>${media.cameraFacing() === 'user' ? t('mediaUseRearCamera') : t('mediaUseFrontCamera')}</span>`;
+        switchCamera.setAttribute('aria-label', switchCamera.textContent ?? '');
+      };
+      updateCameraLabel(); switchCamera.disabled = !media.cameraAvailable();
       actions.append(button(t('uiStudioText82'), 'button primary', async () => {await this.api.request('POST', `/streams/${this.stream}/highlights`, {source: 'MANUAL', reason: t('uiStudioText83')}); toast(t('uiStudioText84'));}),
-        microphone, camera, button(t('uiStudioText85'), 'button subtle', async () => {await media.captions(); toast(t('uiStudioText86'));}), button(t('uiStudioText87'), 'button danger', () => this.finish()));
+        microphone, camera, switchCamera, button(t('uiStudioText85'), 'button subtle', async () => {await media.captions(); toast(t('uiStudioText86'));}), button(t('uiStudioText87'), 'button danger', () => this.finish()));
       left.append(actions);
     } else if (text(latest, 'status') === 'LIVE') {
       left.append(html(t('uiStudioText88')), button(t('uiStudioText89'), 'button danger', async () => {await this.api.request('POST', `/streams/${text(latest, 'id')}/end`, {}); await this.loadDashboard(true);}));
@@ -264,16 +280,17 @@ export class StreamGuardApp {
       const categories = select(this.categories.map(row => [text(row, 'name'), text(row, 'id')]));
       const shareScreen = checkbox(t('uiStudioText92')); const row = panel('form-row');
       row.append(field(t('uiStudioText94'), categories), field(t('uiCreateChannelText64'), description));
+      const cameraFacing = select([[t('mediaFrontCamera'), 'user'], [t('mediaRearCamera'), 'environment']]);
       shareScreen.control.disabled = !media.screenSharingSupported();
       if (shareScreen.control.disabled) shareScreen.control.checked = false;
-      form.append(field(t('uiStudioText93'), name), row, shareScreen.element);
+      form.append(field(t('uiStudioText93'), name), row, field(t('mediaCameraSelection'), cameraFacing), shareScreen.element);
       const mediaHint = panel('capture-hint');
       mediaHint.textContent = shareScreen.control.disabled ? t('mediaMobileCameraHint') : t('mediaDevicePermissionsHint');
       form.append(mediaHint);
       const start = button(t('uiStudioText96'), 'button primary', async () => {
         if (!name.value.trim()) {toast(t('uiStudioText97'), true); return;} start.disabled = true;
         try {
-          await media.prepare(shareScreen.control.checked);
+          await media.prepare(shareScreen.control.checked, cameraFacing.value === 'environment' ? 'environment' : 'user');
           if (media.usedCameraFallback()) toast(t('mediaScreenFallback'));
           const result = object(await this.api.request('POST', '/streams', {title: name.value, description: description.value, categoryId: categories.value}));
           this.stream = text(result, 'id'); this.broadcasting = true; media.connect(this.stream, true, event => this.realtime(event)); await this.loadDashboard(true);
@@ -289,12 +306,18 @@ export class StreamGuardApp {
     else layout.style.gridTemplateColumns = 'minmax(0, 1fr)';
     this.content.append(layout, right);
     if (this.broadcasting) {this.launch(() => this.loadMessages()); media.attach();}
-    if (this.broadcasting) this.content.append(this.collaborationPanel());
+    if (this.broadcasting) {
+      this.setupCollaboration(left, text(latest, 'channel_name') || text(this.user ?? {}, 'username'));
+      this.content.append(this.collaborationPanel());
+      this.launch(() => this.syncCollaboration(this.stream));
+      this.collaborationPoll = window.setInterval(() => this.launch(() => this.syncCollaboration(this.stream)), 10000);
+    }
   }
   private async finish(): Promise<void> {
     await this.api.request('POST', `/streams/${this.stream}/end`, {}); this.broadcasting = false; media.stop(); toast(t('uiFinishText104')); await this.loadDashboard(true);
   }
   private async watch(): Promise<void> {
+    this.clearCollaboration();
     this.title(t('uiWatchText105'), t('uiWatchText106'), t('uiWatchText107')); const epoch = this.epoch;
     const stream = object(await this.api.request('GET', `/streams/${this.stream}`)); if (epoch !== this.epoch) return;
     this.content.replaceChildren(); this.title(text(stream, 'channel_name'), text(stream, 'title'), text(stream, 'description'));
@@ -314,14 +337,7 @@ export class StreamGuardApp {
     });
     actions.append(sound);
     player.append(actions); layout.append(player, this.chatPanel()); this.content.append(layout);
-    this.collaborationStage = player.querySelector('.video-stage');
-    this.collaborationSection = panel('collaboration-section');
-    const title = panel('panel-heading'); title.append(html(`<h2>${escape(t('collaborationPerspectives'))}</h2>`));
-    this.collaborationPrimary = panel('collaboration-tile');
-    const label = document.createElement('strong'); label.textContent = text(stream, 'channel_name');
-    if (this.collaborationStage) this.collaborationPrimary.append(label, this.collaborationStage);
-    this.collaborationGrid = panel('collaboration-grid'); this.collaborationGrid.append(this.collaborationPrimary);
-    this.collaborationSection.append(title, this.collaborationGrid); this.content.append(this.collaborationSection);
+    this.setupCollaboration(player, text(stream, 'channel_name'));
     if (text(stream, 'status') === 'LIVE') {await this.loadMessages(); media.connect(this.stream, false, event => this.realtime(event));}
     else toast(t('uiWatchText112'));
     if (text(stream, 'status') === 'LIVE') {
@@ -330,8 +346,21 @@ export class StreamGuardApp {
     }
   }
 
+  private setupCollaboration(player: HTMLDivElement, name: string): void {
+    this.collaborationStage = player.querySelector('.video-stage');
+    this.collaborationPlayer = this.collaborationStage?.parentElement as HTMLDivElement | null;
+    this.collaborationSection = panel('collaboration-section');
+    const title = panel('panel-heading'); title.append(html(`<h2>${escape(t('collaborationPerspectives'))}</h2>`));
+    this.collaborationPrimary = panel('collaboration-tile');
+    const label = document.createElement('strong'); label.textContent = name; this.collaborationPrimary.append(label);
+    this.collaborationGrid = panel('collaboration-grid'); this.collaborationGrid.append(this.collaborationPrimary);
+    this.collaborationSection.append(title, this.collaborationGrid); this.collaborationSection.hidden = true;
+    this.collaborationPlayer?.insertBefore(this.collaborationSection, this.collaborationStage);
+  }
+
   private collaborationPanel(): HTMLDivElement {
     const card = panel('surface collaboration-card'), heading = panel('panel-heading');
+    this.collaborationCard = card;
     heading.append(html(`<h2>${escape(t('collaborationTitle'))}</h2>`));
     card.append(heading, html(`<p class="collaboration-copy">${escape(t('collaborationDescription'))}</p>`));
     const actions = panel('action-row'), create = button(t('collaborationCreate'), 'button primary small', async () => {
@@ -339,17 +368,19 @@ export class StreamGuardApp {
       try {
         const result = object(await this.api.request('POST', `/streams/${this.stream}/collaborations`, {}));
         const code = text(result, 'inviteCode');
+        if (code) sessionStorage.setItem(`streamguard.invite.${text(result, 'id')}`, code);
         if (code) {codeInput.value = code; codeInput.dispatchEvent(new Event('input')); toast(t('collaborationCreated'));}
-        await this.showInvite(card, code);
+        await this.showInvite(card, code); await this.syncCollaboration(this.stream);
       } finally {create.disabled = false;}
     });
     const codeInput = input(t('collaborationCodePlaceholder')); codeInput.maxLength = 80;
     const join = button(t('collaborationJoin'), 'button subtle small', async () => {
       if (!codeInput.value.trim()) return;
       join.disabled = true;
-      try {await this.api.request('POST', '/collaborations/join', {code: codeInput.value.trim()}); toast(t('collaborationJoined')); await this.showInvite(card, '');}
+      try {await this.api.request('POST', '/collaborations/join', {code: codeInput.value.trim()}); toast(t('collaborationJoined')); await this.showInvite(card, ''); await this.syncCollaboration(this.stream);}
       finally {join.disabled = false;}
     });
+    create.dataset.collaborationAction = 'create'; join.dataset.collaborationAction = 'join';
     const codeRow = panel('collaboration-code-row'); codeRow.append(codeInput, join);
     actions.append(create); card.append(actions, codeRow);
     this.launch(async () => {
@@ -362,6 +393,8 @@ export class StreamGuardApp {
   private async showInvite(card: HTMLDivElement, code: string): Promise<void> {
     const existing = card.querySelector('.collaboration-invite'); existing?.remove();
     const state = object(await this.api.request('GET', `/streams/${this.stream}/collaboration`));
+    if (!card.isConnected) return;
+    code ||= sessionStorage.getItem(`streamguard.invite.${text(state, 'id')}`) ?? '';
     const participants = rows(state.participants);
     const invite = panel('collaboration-invite');
     const summary = document.createElement('p'); summary.textContent = `${participants.length}/${text(state, 'max_participants') || '4'} ${t('collaborationParticipants')}`;
@@ -371,20 +404,28 @@ export class StreamGuardApp {
       invite.append(entry, button(t('collaborationCopy'), 'button subtle small', async () => {await navigator.clipboard.writeText(code); toast(t('collaborationCopied'));}));
     }
     if (text(state, 'id')) invite.append(button(t('collaborationLeave'), 'button danger small', async () => {
-      await this.api.request('POST', `/collaborations/${text(state, 'id')}/leave`, {}); toast(t('collaborationLeft')); invite.remove();
+      await this.api.request('POST', `/collaborations/${text(state, 'id')}/leave`, {});
+      sessionStorage.removeItem(`streamguard.invite.${text(state, 'id')}`); toast(t('collaborationLeft')); invite.remove(); await this.syncCollaboration(this.stream);
     }));
     card.append(invite);
   }
 
   private async syncCollaboration(stream: string): Promise<void> {
-    if (!this.collaborationGrid || !this.collaborationSection || this.screen !== 'watch') return;
+    if (!this.collaborationGrid || !this.collaborationSection || !['watch', 'studio'].includes(this.screen)) return;
     const state = object(await this.api.request('GET', `/streams/${stream}/collaboration`));
+    if (stream !== this.stream || !this.collaborationGrid || !this.collaborationSection || !['watch', 'studio'].includes(this.screen)) return;
+    if (this.collaborationCard) {
+      const summary = this.collaborationCard.querySelector('.collaboration-invite p');
+      if (summary) summary.textContent = `${rows(state.participants).length}/${text(state, 'max_participants') || '4'} ${t('collaborationParticipants')}`;
+      if (!state.active) this.collaborationCard.querySelector('.collaboration-invite')?.remove();
+      for (const button of this.collaborationCard.querySelectorAll<HTMLButtonElement>('[data-collaboration-action]')) button.disabled = Boolean(state.active);
+    }
     const participants = rows(state.participants).filter(row => text(row, 'stream_id') !== stream);
     const active = Boolean(state.active) && participants.length > 0;
     this.collaborationSection.hidden = !active;
-    if (active && this.collaborationStage && !this.collaborationStage.isConnected) this.collaborationPrimary?.append(this.collaborationStage);
-    if (!active && this.collaborationStage && this.collaborationStage.parentElement !== this.collaborationGrid) {
-      const player = this.content.querySelector('.watch-grid > .surface'); player?.prepend(this.collaborationStage);
+    if (active && this.collaborationStage && this.collaborationStage.parentElement !== this.collaborationPrimary) this.collaborationPrimary?.append(this.collaborationStage);
+    if (!active && this.collaborationStage && this.collaborationStage.parentElement !== this.collaborationPlayer) {
+      this.collaborationPlayer?.append(this.collaborationStage);
     }
     for (const [id, tile] of this.collaborationTiles) {
       if (!participants.some(row => text(row, 'stream_id') === id)) {tile.stop(); this.collaborationTiles.delete(id); this.collaborationGrid.querySelector(`[data-collaboration-stream="${CSS.escape(id)}"]`)?.remove();}
@@ -406,7 +447,8 @@ export class StreamGuardApp {
   private clearCollaboration(): void {
     window.clearInterval(this.collaborationPoll); this.collaborationPoll = 0;
     for (const tile of this.collaborationTiles.values()) tile.stop(); this.collaborationTiles.clear();
-    this.collaborationStage = null; this.collaborationPrimary = null; this.collaborationGrid = null; this.collaborationSection = null;
+    this.collaborationStage = null; this.collaborationPrimary = null; this.collaborationGrid = null; this.collaborationSection = null; this.collaborationPlayer = null;
+    this.collaborationCard = null;
   }
   private chatPanel(): HTMLDivElement {
     this.messageIds.clear(); const container = panel('surface chat-panel');

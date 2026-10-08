@@ -26,6 +26,7 @@ interface MediaState {
   local: MediaStream | null; remote: MediaStream | null; ws: WebSocket | null;
   microphone: MediaStreamTrack | null;
   camera: MediaStreamTrack | null; cameraFallback: boolean; composite: CompositeVideo | null;
+  facing: 'user' | 'environment'; switchingCamera: boolean; generation: number;
   captures: MediaStream[]; mixer: AudioContext | null;
   peers: Map<string, RTCPeerConnection>; pending: Map<string, RTCIceCandidateInit[]>;
   host: boolean; stream: string; started: number; recorderStarted: number;
@@ -39,6 +40,7 @@ interface MediaState {
 const state: MediaState = {
   api: '', token: '', config: {}, local: null, remote: null, ws: null,
   microphone: null, camera: null, cameraFallback: false, composite: null,
+  facing: 'user', switchingCamera: false, generation: 0,
   captures: [], mixer: null,
   peers: new Map(), pending: new Map(), host: false, stream: '', started: 0,
   recorderStarted: 0, segments: [], recorder: null, callback: () => {},
@@ -98,15 +100,16 @@ function awaitVideo(): void {
     if (!connected) useRelay();
   }, 8000);
 }
-async function prepare(screen: boolean): Promise<void> {
+async function prepare(screen: boolean, facing: 'user' | 'environment' = 'user'): Promise<void> {
   if (!navigator.mediaDevices?.getUserMedia) throw new Error(t('mediaText02'));
   stop(); state.stopping = false;
   try {
-    const captured = await acquireSources(screen, browserCaptureEnvironment());
+    const captured = await acquireSources(screen, browserCaptureEnvironment(), facing);
     state.captures.push(captured.devices);
     if (captured.display) state.captures.push(captured.display);
     state.microphone = captured.devices.getAudioTracks()[0] ?? null;
     state.camera = captured.devices.getVideoTracks()[0] ?? null;
+    state.facing = facing;
     state.cameraFallback = captured.cameraFallback;
     if (!state.microphone || (!captured.display && !state.camera)) throw new Error(t('mediaDeviceMissing'));
     let audioTracks = [state.microphone];
@@ -127,10 +130,39 @@ async function prepare(screen: boolean): Promise<void> {
       }
       state.local = new MediaStream([...(state.composite ? [state.composite.track] : captured.display.getVideoTracks()), ...audioTracks]);
       captured.display.getVideoTracks()[0]?.addEventListener('ended', () => {if (state.host) stop();});
-    } else state.local = captured.devices;
+    } else {
+      state.composite = compositeVideo(null, captured.devices);
+      state.local = new MediaStream([state.composite.track, ...audioTracks]);
+    }
     state.local.getVideoTracks()[0]?.addEventListener('ended', () => {if (state.host) stop();});
   } catch (error) {stop(); throw new Error(messageForError(error));}
   state.host = true; attach();
+}
+/** Keep the outgoing canvas/audio tracks stable while releasing the phone's old camera. */
+async function switchCamera(): Promise<void> {
+  if (!state.host || !state.camera || !state.composite || state.switchingCamera) return;
+  const previous = state.camera, enabled = previous.enabled, generation = state.generation;
+  const oldFacing = state.facing, nextFacing = oldFacing === 'user' ? 'environment' : 'user';
+  state.switchingCamera = true;
+  const install = (stream: MediaStream, facing: 'user' | 'environment'): void => {
+    if (generation !== state.generation || !state.host || !state.composite) {stream.getTracks().forEach(track => track.stop()); return;}
+    const camera = stream.getVideoTracks()[0];
+    if (!camera) {stream.getTracks().forEach(track => track.stop()); throw new Error(t('mediaCameraMissing'));}
+    camera.enabled = enabled; state.camera = camera; state.facing = facing;
+    state.captures.push(stream); state.composite.replaceCamera(stream);
+  };
+  // iOS devices often cannot open the rear lens until the front lens has stopped.
+  previous.stop();
+  try {
+    install(await navigator.mediaDevices.getUserMedia({audio: false, video: {
+      facingMode: {exact: nextFacing}, width: {ideal: 1280}, height: {ideal: 720}, frameRate: {ideal: 24},
+    }}), nextFacing);
+  } catch (error) {
+    if (generation !== state.generation) return;
+    try {install(await navigator.mediaDevices.getUserMedia({audio: false, video: {facingMode: {ideal: oldFacing}}}), oldFacing);}
+    catch {state.camera = null;}
+    throw new Error(['NotFoundError', 'OverconstrainedError'].includes(mediaErrorName(error)) ? t('mediaOtherCameraMissing') : messageForError(error));
+  } finally {if (generation === state.generation) state.switchingCamera = false;}
 }
 function createPeer(id: string): RTCPeerConnection {
   const peer = new RTCPeerConnection({iceServers: state.config.iceServers ?? [{urls: 'stun:stun.l.google.com:19302'}]});
@@ -311,6 +343,7 @@ async function share(asset: string, title: string): Promise<boolean> {
   }
 }
 function stop(): void {
+  state.generation++; state.switchingCamera = false;
   window.clearTimeout(state.fallbackTimer); state.fallbackTimer = undefined; relay.stop();
   window.clearTimeout(state.reconnectTimer); window.clearInterval(state.keepAliveTimer); state.reconnectAttempts = 0;
   state.stopping = true; state.capture = null; window.clearTimeout(state.interval); window.clearInterval(state.audioTimer);
@@ -329,7 +362,8 @@ function stop(): void {
 }
 export const media = {
   configure(api: string, token: string, config: MediaConfig): void {state.api = api.replace(/\/$/, ''); state.token = token; state.config = config;},
-  prepare, connect, attach, stop, captions, playback, share, messageForError,
+  prepare, connect, attach, stop, captions, playback, share, messageForError, switchCamera,
+  cameraFacing(): 'user' | 'environment' {return state.facing;},
   toggleMicrophone(): boolean {
     if (!state.microphone) return false;
     state.microphone.enabled = !state.microphone.enabled;

@@ -116,7 +116,7 @@
   "uiStudioText119": "Desactivar cámara",
   "uiStudioText120": "Activar cámara",
   "mediaScreenFallback": "Este navegador no permite compartir pantalla. Iniciamos el directo con la cámara y el micrófono.",
-  "mediaMobileCameraHint": "Este navegador permite transmitir con cámara y micrófono, pero no compartir la pantalla. Compartir la pantalla de Android requiere una aplicación compatible.",
+  "mediaMobileCameraHint": "Este navegador no puede capturar la pantalla del teléfono. Puedes transmitir con la cámara frontal o trasera. Compartir la pantalla necesita una aplicación nativa: iOS usa ReplayKit y Android usa MediaProjection.",
   "mediaDevicePermissionsHint": "Al comenzar, permite el acceso a cámara y micrófono. Si compartes pantalla, tu cámara aparecerá en una esquina y podrás desactivarla.",
   "mediaCaptureAborted": "La captura se interrumpió. Cierra otras aplicaciones que usen cámara o micrófono e inténtalo otra vez.",
   "mediaCaptureNeedsFocus": "Mantén esta página abierta y pulsa Empezar transmisión para seleccionar la captura.",
@@ -307,5 +307,11 @@
   "collaborationWaiting": "Esperando a que este streamer vuelva al directo…",
   "collaborationStreamEnded": "Este streamer terminó su directo.",
   "collaborationUnavailable": "No se pudo conectar con esta perspectiva.",
-  "collaborationBrowserUnsupported": "Este navegador no puede reproducir el formato de respaldo de video."
+  "collaborationBrowserUnsupported": "Este navegador no puede reproducir el formato de respaldo de video.",
+  "mediaCameraSelection": "Cámara para empezar",
+  "mediaFrontCamera": "Cámara frontal",
+  "mediaRearCamera": "Cámara trasera",
+  "mediaUseRearCamera": "Usar cámara trasera",
+  "mediaUseFrontCamera": "Usar cámara frontal",
+  "mediaOtherCameraMissing": "No se pudo abrir la otra cámara. Comprueba que tu dispositivo tenga esa cámara y que ninguna otra aplicación la esté usando."
 }
