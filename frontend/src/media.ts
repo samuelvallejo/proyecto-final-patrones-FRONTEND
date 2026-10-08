@@ -55,6 +55,7 @@ export function messageForError(error: unknown): string {
     InvalidStateError: 'mediaCaptureNeedsFocus', NotSupportedError: 'mediaCaptureUnsupported', TypeError: 'mediaCaptureUnsupported',
   };
   const name = mediaErrorName(error);
+  if (name === 'NotAllowedError' && /Android/i.test(navigator.userAgent)) return t('mediaAndroidPermissionDenied');
   const key = keys[name]; if (key) return t(key);
   if (error instanceof Error) {
     if (error.name === 'Error' && error.message) return error.message;
@@ -126,13 +127,20 @@ async function prepare(screen: boolean, facing: 'user' | 'environment' = 'user')
       }
       if (state.camera) {
         try {state.composite = compositeVideo(captured.display, captured.devices);}
-        catch {throw new Error(t('mediaCompositorUnsupported'));}
+        catch {state.camera = null; emit({type: 'notice', body: t('mediaCompositorUnsupported')});}
       }
       state.local = new MediaStream([...(state.composite ? [state.composite.track] : captured.display.getVideoTracks()), ...audioTracks]);
       captured.display.getVideoTracks()[0]?.addEventListener('ended', () => {if (state.host) stop();});
     } else {
-      state.composite = compositeVideo(null, captured.devices);
-      state.local = new MediaStream([state.composite.track, ...audioTracks]);
+      try {
+        state.composite = compositeVideo(null, captured.devices);
+        state.local = new MediaStream([state.composite.track, ...audioTracks]);
+      } catch {
+        // A few Android browsers cannot capture a canvas. Sending the camera
+        // track directly still allows a normal camera-and-microphone stream.
+        state.composite = null;
+        state.local = captured.devices;
+      }
     }
     state.local.getVideoTracks()[0]?.addEventListener('ended', () => {if (state.host) stop();});
   } catch (error) {stop(); throw new Error(messageForError(error));}
@@ -140,26 +148,37 @@ async function prepare(screen: boolean, facing: 'user' | 'environment' = 'user')
 }
 /** Keep the outgoing canvas/audio tracks stable while releasing the phone's old camera. */
 async function switchCamera(): Promise<void> {
-  if (!state.host || !state.camera || !state.composite || state.switchingCamera) return;
+  if (!state.host || !state.camera || state.switchingCamera) return;
   const previous = state.camera, enabled = previous.enabled, generation = state.generation;
   const oldFacing = state.facing, nextFacing = oldFacing === 'user' ? 'environment' : 'user';
   state.switchingCamera = true;
-  const install = (stream: MediaStream, facing: 'user' | 'environment'): void => {
-    if (generation !== state.generation || !state.host || !state.composite) {stream.getTracks().forEach(track => track.stop()); return;}
+  const install = async (stream: MediaStream, facing: 'user' | 'environment'): Promise<void> => {
+    if (generation !== state.generation || !state.host) {stream.getTracks().forEach(track => track.stop()); return;}
     const camera = stream.getVideoTracks()[0];
     if (!camera) {stream.getTracks().forEach(track => track.stop()); throw new Error(t('mediaCameraMissing'));}
     camera.enabled = enabled; state.camera = camera; state.facing = facing;
-    state.captures.push(stream); state.composite.replaceCamera(stream);
+    state.captures.push(stream);
+    if (state.composite) state.composite.replaceCamera(stream);
+    else if (state.local) {
+      const recorder = state.recorder;
+      if (recorder?.state === 'recording') {state.recorder = null; recorder.stop();}
+      state.local.removeTrack(previous); state.local.addTrack(camera);
+      await Promise.all([...state.peers.values()].flatMap(peer => peer.getSenders()
+        .filter(sender => sender.track?.id === previous.id).map(sender => sender.replaceTrack(camera).catch(error => {
+          console.warn('Camera track could not be replaced for one viewer', error);
+        }))));
+      if (generation === state.generation && state.host) startRecording();
+    }
   };
   // iOS devices often cannot open the rear lens until the front lens has stopped.
   previous.stop();
   try {
-    install(await navigator.mediaDevices.getUserMedia({audio: false, video: {
+    await install(await navigator.mediaDevices.getUserMedia({audio: false, video: {
       facingMode: {exact: nextFacing}, width: {ideal: 1280}, height: {ideal: 720}, frameRate: {ideal: 24},
     }}), nextFacing);
   } catch (error) {
     if (generation !== state.generation) return;
-    try {install(await navigator.mediaDevices.getUserMedia({audio: false, video: {facingMode: {ideal: oldFacing}}}), oldFacing);}
+    try {await install(await navigator.mediaDevices.getUserMedia({audio: false, video: {facingMode: {ideal: oldFacing}}}), oldFacing);}
     catch {state.camera = null;}
     throw new Error(['NotFoundError', 'OverconstrainedError'].includes(mediaErrorName(error)) ? t('mediaOtherCameraMissing') : messageForError(error));
   } finally {if (generation === state.generation) state.switchingCamera = false;}

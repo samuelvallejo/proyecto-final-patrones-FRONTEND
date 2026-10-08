@@ -33,13 +33,19 @@ export async function acquireSources(screen: boolean, environment: CaptureEnviro
       }
     }
     try {
-      devices = await environment.devices.getUserMedia({
+      const android = /Android/i.test(environment.userAgent);
+      devices = await environment.devices.getUserMedia(android ? {
+        // Android camera drivers vary widely; let the browser choose a supported
+        // capture size instead of asking for desktop-sized video up front.
+        video: {facingMode: {ideal: facing}}, audio: true,
+      } : {
         video: {width: {ideal: 1280}, height: {ideal: 720}, frameRate: {ideal: 24}, facingMode: {ideal: facing}},
         audio: {echoCancellation: true, noiseSuppression: true, autoGainControl: true},
       });
     } catch (error) {
       const name = mediaErrorName(error);
-      if (name === 'OverconstrainedError') devices = await environment.devices.getUserMedia({video: true, audio: true});
+      if (name === 'OverconstrainedError' || (name === 'NotFoundError' && !display))
+        devices = await environment.devices.getUserMedia({video: {facingMode: {ideal: facing}}, audio: true});
       else if (name === 'NotFoundError' && display) devices = await environment.devices.getUserMedia({audio: true});
       else throw error;
     }
