@@ -256,7 +256,7 @@
   "bootRetry": "Volver a cargar",
   "studioGreeting": "Hola, ",
   "mediaPermissionDenied": "Permite el acceso a cámara y micrófono para transmitir.",
-  "mediaAndroidPermissionDenied": "Chrome no tiene permiso para usar la cámara o el micrófono. En los ajustes del sitio, permite Cámara y Micrófono, vuelve a cargar StreamGuard y pulsa Empezar transmisión.",
+  "mediaAndroidPermissionDenied": "El navegador no tiene permiso para usar la cámara o el micrófono. En Android, abre los ajustes del sitio, permite Cámara y Micrófono, vuelve a cargar StreamGuard y pulsa Empezar transmisión.",
   "mediaMicrophonePermissionDenied": "Permite el acceso al micrófono para presentar tu pantalla.",
   "mediaDeviceMissing": "No se encontró una cámara o un micrófono disponible.",
   "mediaDeviceBusy": "No se pudo abrir el dispositivo. Revisa si otra aplicación está usando la cámara o el micrófono.",
