@@ -3,6 +3,8 @@ import {object, rows, text, flag, mediaConfig, type Json, type Row, type LiveEve
 import {panel, html, escape, input, area, field, button, checkbox, select, toast, empty, dialog, icon} from './dom';
 import {t} from './i18n';
 import {media} from './media';
+import {CollaborationTile} from './collaboration';
+import './collaboration.css';
 
 type Screen = 'explore' | 'studio' | 'login' | 'register' | 'watch' | 'public-clips' | 'account' | 'moderation' | 'clips' | 'assistant' | 'settings';
 const adminScreens: Screen[] = ['studio', 'moderation', 'clips', 'assistant', 'settings'];
@@ -26,6 +28,12 @@ export class StreamGuardApp {
   private audience: HTMLSpanElement | null = null;
   private readonly messageIds = new Set<string>();
   private epoch = 0;
+  private collaborationTiles = new Map<string, CollaborationTile>();
+  private collaborationPoll = 0;
+  private collaborationStage: HTMLElement | null = null;
+  private collaborationPrimary: HTMLDivElement | null = null;
+  private collaborationGrid: HTMLDivElement | null = null;
+  private collaborationSection: HTMLDivElement | null = null;
 
   constructor(private readonly root: HTMLElement) {
     this.api.onUnauthorized = () => {this.user = null; this.configureMedia();};
@@ -76,6 +84,7 @@ export class StreamGuardApp {
     control.setAttribute('aria-label', label); return control;
   }
   private route(next: Screen): void {
+    if (next !== 'watch') this.clearCollaboration();
     if (!this.broadcasting && this.screen === 'watch') media.stop();
     this.screen = next; this.mobileNav = false; this.epoch++; this.messageIds.clear(); this.audience = null;
     this.shell(); this.launch(() => this.render());
@@ -255,6 +264,7 @@ export class StreamGuardApp {
       button(t('uiStudioText101'), 'button subtle full', () => this.route('moderation')), button(t('uiStudioText102'), 'button subtle full', () => this.route('settings')), html(t('uiStudioText103')));
     layout.append(left, right); this.content.append(layout);
     if (this.broadcasting) {this.content.append(this.chatPanel()); this.launch(() => this.loadMessages()); media.attach();}
+    if (this.broadcasting) this.content.append(this.collaborationPanel());
   }
   private async finish(): Promise<void> {
     await this.api.request('POST', `/streams/${this.stream}/end`, {}); this.broadcasting = false; media.stop(); toast(t('uiFinishText104')); await this.loadDashboard(true);
@@ -279,8 +289,99 @@ export class StreamGuardApp {
     });
     actions.append(sound);
     player.append(actions); layout.append(player, this.chatPanel()); this.content.append(layout);
+    this.collaborationStage = player.querySelector('.video-stage');
+    this.collaborationSection = panel('collaboration-section');
+    const title = panel('panel-heading'); title.append(html(`<h2>${escape(t('collaborationPerspectives'))}</h2>`));
+    this.collaborationPrimary = panel('collaboration-tile');
+    const label = document.createElement('strong'); label.textContent = text(stream, 'channel_name');
+    if (this.collaborationStage) this.collaborationPrimary.append(label, this.collaborationStage);
+    this.collaborationGrid = panel('collaboration-grid'); this.collaborationGrid.append(this.collaborationPrimary);
+    this.collaborationSection.append(title, this.collaborationGrid); this.content.append(this.collaborationSection);
     if (text(stream, 'status') === 'LIVE') {await this.loadMessages(); media.connect(this.stream, false, event => this.realtime(event));}
     else toast(t('uiWatchText112'));
+    if (text(stream, 'status') === 'LIVE') {
+      await this.syncCollaboration(this.stream);
+      this.collaborationPoll = window.setInterval(() => this.launch(() => this.syncCollaboration(this.stream)), 10000);
+    }
+  }
+
+  private collaborationPanel(): HTMLDivElement {
+    const card = panel('surface collaboration-card'), heading = panel('panel-heading');
+    heading.append(html(`<h2>${escape(t('collaborationTitle'))}</h2>`));
+    card.append(heading, html(`<p class="collaboration-copy">${escape(t('collaborationDescription'))}</p>`));
+    const actions = panel('action-row'), create = button(t('collaborationCreate'), 'button primary small', async () => {
+      create.disabled = true;
+      try {
+        const result = object(await this.api.request('POST', `/streams/${this.stream}/collaborations`, {}));
+        const code = text(result, 'inviteCode');
+        if (code) {codeInput.value = code; codeInput.dispatchEvent(new Event('input')); toast(t('collaborationCreated'));}
+        await this.showInvite(card, code);
+      } finally {create.disabled = false;}
+    });
+    const codeInput = input(t('collaborationCodePlaceholder')); codeInput.maxLength = 80;
+    const join = button(t('collaborationJoin'), 'button subtle small', async () => {
+      if (!codeInput.value.trim()) return;
+      join.disabled = true;
+      try {await this.api.request('POST', '/collaborations/join', {code: codeInput.value.trim()}); toast(t('collaborationJoined')); await this.showInvite(card, '');}
+      finally {join.disabled = false;}
+    });
+    const codeRow = panel('collaboration-code-row'); codeRow.append(codeInput, join);
+    actions.append(create); card.append(actions, codeRow);
+    this.launch(async () => {
+      const state = object(await this.api.request('GET', `/streams/${this.stream}/collaboration`));
+      if (state.active) await this.showInvite(card, '');
+    });
+    return card;
+  }
+
+  private async showInvite(card: HTMLDivElement, code: string): Promise<void> {
+    const existing = card.querySelector('.collaboration-invite'); existing?.remove();
+    const state = object(await this.api.request('GET', `/streams/${this.stream}/collaboration`));
+    const participants = rows(state.participants);
+    const invite = panel('collaboration-invite');
+    const summary = document.createElement('p'); summary.textContent = `${participants.length}/${text(state, 'max_participants') || '4'} ${t('collaborationParticipants')}`;
+    invite.append(summary);
+    if (code) {
+      const entry = input(''); entry.readOnly = true; entry.value = code; entry.setAttribute('aria-label', t('collaborationInviteCode'));
+      invite.append(entry, button(t('collaborationCopy'), 'button subtle small', async () => {await navigator.clipboard.writeText(code); toast(t('collaborationCopied'));}));
+    }
+    if (text(state, 'id')) invite.append(button(t('collaborationLeave'), 'button danger small', async () => {
+      await this.api.request('POST', `/collaborations/${text(state, 'id')}/leave`, {}); toast(t('collaborationLeft')); invite.remove();
+    }));
+    card.append(invite);
+  }
+
+  private async syncCollaboration(stream: string): Promise<void> {
+    if (!this.collaborationGrid || !this.collaborationSection || this.screen !== 'watch') return;
+    const state = object(await this.api.request('GET', `/streams/${stream}/collaboration`));
+    const participants = rows(state.participants).filter(row => text(row, 'stream_id') !== stream);
+    const active = Boolean(state.active) && participants.length > 0;
+    this.collaborationSection.hidden = !active;
+    if (active && this.collaborationStage && !this.collaborationStage.isConnected) this.collaborationPrimary?.append(this.collaborationStage);
+    if (!active && this.collaborationStage && this.collaborationStage.parentElement !== this.collaborationGrid) {
+      const player = this.content.querySelector('.watch-grid > .surface'); player?.prepend(this.collaborationStage);
+    }
+    for (const [id, tile] of this.collaborationTiles) {
+      if (!participants.some(row => text(row, 'stream_id') === id)) {tile.stop(); this.collaborationTiles.delete(id); this.collaborationGrid.querySelector(`[data-collaboration-stream="${CSS.escape(id)}"]`)?.remove();}
+    }
+    for (const participant of participants) {
+      const id = text(participant, 'stream_id'); if (!id || this.collaborationTiles.has(id)) continue;
+      const item = panel('collaboration-tile'); item.dataset.collaborationStream = id;
+      const label = document.createElement('strong'); label.textContent = `${text(participant, 'channel_name')} · ${text(participant, 'title')}`;
+      const stage = panel('video-stage collaboration-video-stage'), video = document.createElement('video');
+      video.autoplay = true; video.playsInline = true; video.controls = true;
+      const status = document.createElement('div'); status.className = 'collaboration-video-status'; status.textContent = t('collaborationConnecting');
+      stage.append(video, status); item.append(label, stage); this.collaborationGrid.append(item);
+      const iceServers = Array.isArray(this.config.iceServers) ? this.config.iceServers as unknown as RTCIceServer[] : [{urls: 'stun:stun.l.google.com:19302'}];
+      const tile = new CollaborationTile(video, apiOrigin, this.api.token, id, iceServers);
+      this.collaborationTiles.set(id, tile); tile.start();
+    }
+  }
+
+  private clearCollaboration(): void {
+    window.clearInterval(this.collaborationPoll); this.collaborationPoll = 0;
+    for (const tile of this.collaborationTiles.values()) tile.stop(); this.collaborationTiles.clear();
+    this.collaborationStage = null; this.collaborationPrimary = null; this.collaborationGrid = null; this.collaborationSection = null;
   }
   private chatPanel(): HTMLDivElement {
     this.messageIds.clear(); const container = panel('surface chat-panel');
