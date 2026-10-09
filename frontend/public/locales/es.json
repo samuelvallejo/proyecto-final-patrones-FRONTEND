@@ -319,5 +319,6 @@
   "mediaUseFrontCamera": "Usar cámara frontal",
   "mediaOtherCameraMissing": "No se pudo abrir la otra cámara. Comprueba que tu dispositivo tenga esa cámara y que ninguna otra aplicación la esté usando.",
   "banUser": "Banear",
+  "banConfirm": "¿Banear a este usuario? No podrá comentar en este canal hasta que revoques el ban.",
   "banApplied": "Usuario baneado: ya no puede comentar en este canal hasta que se revoque"
 }

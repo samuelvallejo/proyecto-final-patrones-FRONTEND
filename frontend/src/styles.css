@@ -19,3 +19,5 @@
 
 .skip-link{position:fixed;top:-80px;left:12px;z-index:200;padding:12px 16px;border-radius:10px;background:var(--lime);color:#101415;font-weight:700}
 .skip-link:focus{top:12px}
+
+.chat-message .button{margin-left:auto;padding:2px 9px;min-height:24px;font-size:10px;align-self:flex-start}

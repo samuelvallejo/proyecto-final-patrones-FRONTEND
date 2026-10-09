@@ -474,7 +474,18 @@ export class StreamGuardApp {
   }
   private appendMessage(message: Row): void {
     if (!this.chatList) return; const id = text(message, 'id'); if (this.messageIds.has(id)) return; this.messageIds.add(id);
-    const row = panel('chat-message'); row.append(html(`<span class="chat-author">${escape(text(message, 'username'))}</span><span>${escape(text(message, 'content'))}</span>`)); this.chatList.append(row);
+    const row = panel('chat-message'); row.append(html(`<span class="chat-author">${escape(text(message, 'username'))}</span><span>${escape(text(message, 'content'))}</span>`));
+    const author = text(message, 'user_id');
+    // The channel owner can ban from the chat itself. The backend checks again who is allowed.
+    if (this.screen === 'studio' && this.channel && this.user && author && author !== text(this.user, 'id')) {
+      const ban = button(t('banUser'), 'button danger small', async () => {
+        if (!window.confirm(t('banConfirm'))) return; ban.disabled = true;
+        try {await this.api.request('POST', `/channels/${this.channel}/sanctions`, {userId: author, type: 'BAN', seconds: 30, reason: t('uiModerationText128')}); toast(t('banApplied'));}
+        catch (error) {ban.disabled = false; throw error;}
+      });
+      row.append(ban);
+    }
+    this.chatList.append(row);
     if (this.chatList.children.length > 100) this.chatList.firstElementChild?.remove(); this.chatList.scrollTop = this.chatList.scrollHeight;
   }
   private realtime(event: LiveEvent): void {
