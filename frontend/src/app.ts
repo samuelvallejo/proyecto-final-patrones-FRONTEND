@@ -55,7 +55,7 @@ export class StreamGuardApp {
   }
   async start(): Promise<void> {
     const loading = panel('startup-loading');
-    loading.setAttribute('role', 'status'); loading.textContent = t('uiExploreText26');
+    loading.setAttribute('role', 'status'); const spinner=panel('spinner'); spinner.setAttribute('aria-hidden','true'); loading.append(spinner,document.createTextNode(t('processing')));
     this.root.replaceChildren(loading);
     this.api.setToken('');
     try {this.user=object(await this.api.request('GET','/users/me',undefined,true));} catch {this.user=null;}
