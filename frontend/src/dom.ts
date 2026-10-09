@@ -32,7 +32,15 @@ export function field(label: string, control: HTMLElement): HTMLDivElement {
 }
 export function button(label: string, style: string, action: () => void | Promise<void>): HTMLButtonElement {
   const element = document.createElement('button'); element.type = 'button'; element.textContent = label; element.className = style;
-  element.addEventListener('click', () => {if (!element.disabled) void Promise.resolve().then(action).catch(error => toast(error instanceof Error ? error.message : t('mediaConnectionFailed'), true));});
+  element.addEventListener('click', () => {
+    if (element.disabled) return;
+    let result: void | Promise<void>;
+    try {result = action();} catch (error) {toast(error instanceof Error ? error.message : t('operationFailed'), true); return;}
+    if (result instanceof Promise) {
+      element.disabled = true; element.setAttribute('aria-busy', 'true'); const spinner = panel('spinner button-spinner'); spinner.setAttribute('aria-hidden', 'true'); element.prepend(spinner);
+      void result.catch(error => toast(error instanceof Error ? error.message : t('operationFailed'), true)).finally(() => {spinner.remove(); element.disabled = false; element.removeAttribute('aria-busy');});
+    }
+  });
   return element;
 }
 let currentToast: HTMLElement | undefined;
@@ -66,6 +74,8 @@ export function icon(key: string): string {
     search: "<circle cx='10' cy='10' r='6'/><path d='m15 15 6 6'/>",
     settings: "<path d='M4 7h16M4 17h16'/><circle cx='8' cy='7' r='3'/><circle cx='16' cy='17' r='3'/>",
     spark: "<path d='m12 3 2.4 6.6L21 12l-6.6 2.4L12 21l-2.4-6.6L3 12l6.6-2.4Z'/><path d='m20 2 .8 2.2L23 5l-2.2.8L20 8l-.8-2.2L17 5l2.2-.8Z'/>",
+    eye: "<path d='M2 12s3-7 10-7 10 7 10 7-3 7-10 7S2 12 2 12Z'/><circle cx='12' cy='12' r='3'/>",
+    'eye-off': "<path d='M3 3l18 18M7 6a11 11 0 0 1 5-1c7 0 10 7 10 7s-1 3-4 5M14 19h-2C5 19 2 12 2 12s1-3 4-5'/>",
   };
   return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${paths[key] ?? paths.spark}</svg>`;
 }

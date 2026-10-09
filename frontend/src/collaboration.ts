@@ -1,4 +1,5 @@
 import {t} from './i18n';
+import {connectionTicket} from './api';
 
 type SignalPayload = {description?: RTCSessionDescriptionInit; candidate?: RTCIceCandidateInit};
 
@@ -22,7 +23,7 @@ export class CollaborationTile {
   constructor(
     private readonly video: HTMLVideoElement,
     private readonly api: string,
-    private readonly token: string,
+    _token: string,
     private readonly stream: string,
     private readonly iceServers: RTCIceServer[],
   ) {}
@@ -32,10 +33,11 @@ export class CollaborationTile {
     this.video.muted = true;
     const socket = new WebSocket(`${this.api.replace(/^http/, 'ws')}/ws`);
     this.socket = socket;
-    socket.onopen = () => {
-      socket.send(JSON.stringify({type: 'join', streamId: this.stream, token: this.token, host: false}));
+    socket.onopen = () => {void connectionTicket().then(ticket => {
+      if (this.socket!==socket || !this.live) return;
+      socket.send(JSON.stringify({type: 'join', streamId: this.stream, token: ticket, host: false}));
       this.heartbeat = window.setInterval(() => {if (socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify({type: 'ping'}));}, 20000);
-    };
+    }).catch(() => socket.close());};
     socket.onmessage = event => {void this.handleSignalMessage(String(event.data), socket);};
     socket.onclose = () => {
       window.clearInterval(this.heartbeat);
@@ -62,7 +64,7 @@ export class CollaborationTile {
       } else if (event.type === 'error') {
         this.waiting(event.message || t('collaborationUnavailable'));
       }
-    } catch (error) {console.warn('Collaboration signaling message rejected', error);}
+    } catch {this.waiting(t('operationFailed'));}
   }
 
   private async accept(from: string | undefined, payload: SignalPayload): Promise<void> {
@@ -109,7 +111,7 @@ export class CollaborationTile {
     if (!this.live || this.relaySocket) return;
     const socket = new WebSocket(`${this.api.replace(/^http/, 'ws')}/ws/media`);
     this.relaySocket = socket; socket.binaryType = 'arraybuffer';
-    socket.onopen = () => socket.send(JSON.stringify({type: 'join', streamId: this.stream, token: this.token, host: false, format: ''}));
+    socket.onopen = () => {void connectionTicket().then(ticket => {if (this.relaySocket===socket && this.live) socket.send(JSON.stringify({type: 'join', streamId: this.stream, token: ticket, host: false, format: ''}));}).catch(() => socket.close());};
     socket.onmessage = event => {
       if (this.relaySocket !== socket) return;
       if (event.data instanceof ArrayBuffer) {

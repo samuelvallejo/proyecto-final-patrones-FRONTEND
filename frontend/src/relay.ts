@@ -106,7 +106,7 @@ function player(format: string): void {
 function open(): void {
   const current = session; if (!current) return;
   const ws = new WebSocket(`${current.api.replace(/^http/, 'ws')}/ws/media`); socket = ws; ws.binaryType = 'arraybuffer';
-  ws.onopen = () => ws.send(JSON.stringify({type: 'join', streamId: current.stream, token: current.token, host: Boolean(current.local), format: current.format}));
+  ws.onopen = () => {void connectionTicket().then(ticket => {if (socket===ws && session===current) ws.send(JSON.stringify({type: 'join', streamId: current.stream, token: ticket, host: Boolean(current.local), format: current.format}));}).catch(() => ws.close());};
   ws.onmessage = event => {
     if (socket !== ws || session !== current) return;
     if (event.data instanceof ArrayBuffer) {
@@ -145,3 +145,4 @@ export const relay = {
     resetPlayer(); queue = []; mime = ''; viewers = 0;
   },
 };
+import {connectionTicket} from './api';

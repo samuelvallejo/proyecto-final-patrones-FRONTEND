@@ -3,6 +3,8 @@ import {liveEvent, object, text, type Json, type LiveEvent, type MediaConfig} fr
 import {relay} from './relay';
 import {acquireSources, browserCaptureEnvironment, mediaErrorName, screenCaptureSupported} from './capture';
 import {compositeVideo, type CompositeVideo} from './compositor';
+import {connectionTicket} from './api';
+import {beginActivity} from './activity';
 
 interface Segment {blob: Blob; start: number; end: number}
 interface SpeechResult {isFinal: boolean; [index: number]: {transcript: string}}
@@ -60,16 +62,19 @@ export function messageForError(error: unknown): string {
   if (error instanceof Error) {
     if (error.name === 'Error' && error.message) return error.message;
   }
-  console.error('Browser media operation failed', error); return t('mediaConnectionFailed');
+  return t('mediaConnectionFailed');
 }
-async function request(path: string, body: Json | FormData): Promise<Json> {
-  const headers: Record<string, string> = {Authorization: `Bearer ${state.token}`};
+async function request(path: string, body: Json | FormData, silent=false): Promise<Json> {
+  const done=silent ? ()=>{} : beginActivity();
+  try {
+  const headers: Record<string, string> = {};
   if (!(body instanceof FormData)) headers['Content-Type'] = 'application/json';
-  const response = await fetch(`${state.api}/api${path}`, {method: 'POST', headers,
+  const response = await fetch(`/api${path}`, {method: 'POST', headers, credentials: 'include',
     body: body instanceof FormData ? body : JSON.stringify(body), signal: AbortSignal.timeout(55000)});
   const value: unknown = await response.json();
   if (!response.ok) throw new Error(text(object(value), 'error') || t('mediaText01'));
   return value as Json;
+  } finally {done();}
 }
 function emit(event: LiveEvent): void { state.callback(event); }
 function attach(): void {
@@ -229,7 +234,7 @@ function connect(stream: string, host: boolean, callback: (event: LiveEvent) => 
   state.stream = stream; state.host = host; state.callback = callback; state.stopping = false;
   if (host && !state.local) {emit({type: 'error', message: t('mediaText05')}); return;}
   let joined = false; const ws = new WebSocket(`${state.api.replace(/^http/, 'ws')}/ws`); state.ws = ws;
-  ws.onopen = () => send({type: 'join', streamId: stream, token: state.token, host});
+  ws.onopen = () => {void connectionTicket().then(ticket => {if (state.ws === ws && !state.stopping) send({type: 'join', streamId: stream, token: ticket, host});}).catch(() => {emit({type: 'error', message: t('operationFailed')}); ws.close();});};
   ws.onmessage = async raw => {
     try {
       const event = liveEvent(JSON.parse(String(raw.data)) as unknown);
@@ -284,12 +289,40 @@ function startRecording(): void {
     // An old recorder must not populate a new stream's buffer after teardown.
     if (state.stopping || state.recorder !== recorder) return;
     const end = Math.max(start + 1, Math.ceil((Date.now() - state.started) / 1000)); const blob = new Blob(chunks, {type: recorder.mimeType});
-    if (blob.size) {state.segments.push({blob, start, end}); if (state.segments.length > 4) state.segments.shift();}
+    if (blob.size) {state.segments.push({blob, start, end}); if (state.segments.length > 4) state.segments.shift(); archiveSegment({blob, start, end});}
     if (state.capture) {const highlight = state.capture; state.capture = null; void upload(highlight, state.segments.at(-1));}
-    if (!state.stopping && state.host) startRecording();
+    if (!state.stopping && state.host && !finalizing) startRecording();
   };
   recorder.start(); window.clearTimeout(state.interval);
   state.interval = window.setTimeout(() => {if (recorder.state === 'recording') recorder.stop();}, 15000);
+}
+let finalizing = false;
+let archiveBlocked = false;
+let archiveTail: Promise<void> = Promise.resolve();
+let queuedArchiveParts = 0;
+function archiveSegment(segment: Segment): void {
+  if (archiveBlocked) return;
+  if (queuedArchiveParts >= 4) {archiveBlocked = true; emit({type: 'notice', body: t('archiveUploadSlow')}); return;}
+  const stream = state.stream; queuedArchiveParts++;
+  archiveTail = archiveTail.then(async () => {
+    if (archiveBlocked) return;
+    const data = new FormData(); data.append('start', String(segment.start)); data.append('end', String(segment.end));
+    data.append('file', segment.blob, segment.blob.type.includes('mp4') ? 'recording.mp4' : 'recording.webm');
+    for (let attempt=0; attempt<2; attempt++) {
+      try {await request(`/streams/${stream}/recording`, data, true); return;}
+      catch (error) {if (attempt === 1) {archiveBlocked = true; emit({type:'notice', body:error instanceof Error ? error.message : t('archiveUploadFailed')});}}
+    }
+  }).finally(() => {queuedArchiveParts--;});
+}
+async function finalizeRecording(): Promise<void> {
+  const done = beginActivity(); finalizing = true; window.clearTimeout(state.interval);
+  try {
+    const recorder = state.recorder;
+    if (recorder?.state === 'recording') {
+      await new Promise<void>(resolve => {recorder.addEventListener('stop', () => resolve(), {once: true}); recorder.stop();});
+    }
+    await archiveTail;
+  } finally {done();}
 }
 function capture(highlight: string): void {
   if (!recorderType()) {emit({type: 'capture-status', message: t('mediaRecordingUnavailable'), error: true}); return;}
@@ -341,7 +374,7 @@ async function captions(): Promise<void> {
   speech.start();
 }
 async function playback(asset: string, id: string, download: boolean): Promise<void> {
-  const response = await fetch(`${state.api}/api/media/${encodeURIComponent(asset)}`, {headers: state.token ? {Authorization: `Bearer ${state.token}`} : {}});
+  const response = await fetch(`/api/media/${encodeURIComponent(asset)}`, {credentials: 'include'});
   if (!response.ok) throw new Error(t('mediaText17'));
   const blob = await response.blob(); const url = URL.createObjectURL(blob); state.urls.push(url);
   if (download) {
@@ -381,7 +414,8 @@ function stop(): void {
 }
 export const media = {
   configure(api: string, token: string, config: MediaConfig): void {state.api = api.replace(/\/$/, ''); state.token = token; state.config = config;},
-  prepare, connect, attach, stop, captions, playback, share, messageForError, switchCamera,
+  prepare: async (screen: boolean, facing: 'user' | 'environment' = 'user') => {finalizing=false; archiveBlocked=false; await prepare(screen, facing);},
+  connect, attach, stop, captions, playback, share, messageForError, switchCamera, finalizeRecording,
   cameraFacing(): 'user' | 'environment' {return state.facing;},
   toggleMicrophone(): boolean {
     if (!state.microphone) return false;

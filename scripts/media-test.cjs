@@ -61,7 +61,7 @@ test('Device constraints are relaxed once when a phone camera rejects the prefer
   let calls = 0;
   fixture.environment.devices.getUserMedia = async constraints => {
     calls++; if (calls === 1) throw {name: 'OverconstrainedError'};
-    assert.equal(constraints.video, true); assert.equal(constraints.audio, true);
+    assert.equal(constraints.video.facingMode.ideal, 'user'); assert.equal(constraints.audio, true);
     return new Stream([fixture.camera, fixture.microphone]);
   };
   await capture.acquireSources(false, fixture.environment); assert.equal(calls, 2);
@@ -108,7 +108,7 @@ function mediaHarness(fixture) {
   }};
   const compositor = load('compositor', globals);
   const media = load('media', globals, {'./capture': load('capture', globals), './compositor': compositor,
-    './i18n': {t: key => spanish[key]}, './relay': {relay: {stop() {}, viewerActive: () => false}}, './contracts': {}}).media;
+    './i18n': {t: key => spanish[key]}, './relay': {relay: {stop() {}, viewerActive: () => false}}, './contracts': {}, './api': {connectionTicket: async () => 'test-ticket'}, './activity': {beginActivity: () => () => {}}}).media;
   return {media, videos, draws, output};
 }
 test('Mobile camera can start without MediaRecorder and both device toggles work', async () => {
@@ -136,7 +136,7 @@ test('Screen sharing includes webcam, hides its overlay when disabled, and relea
 });
 test('Permission failures return useful Spanish feedback rather than the generic video error', () => {
   const harness = mediaHarness(environment('Android'));
-  assert.equal(harness.media.messageForError({name: 'NotAllowedError'}), spanish.mediaPermissionDenied);
+  assert.equal(harness.media.messageForError({name: 'NotAllowedError'}), spanish.mediaAndroidPermissionDenied);
   assert.equal(harness.media.messageForError({name: 'NotFoundError'}), spanish.mediaDeviceMissing);
 });
 

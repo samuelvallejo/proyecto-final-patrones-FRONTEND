@@ -8,7 +8,7 @@ export default defineConfig(({mode}) => {
   return {
     root: 'frontend',
     define: {'import.meta.env.VITE_BACKEND_ORIGIN': JSON.stringify(backend.origin)},
-    server: {port: 5173, strictPort: true},
+    server: {port: 5173, strictPort: true, proxy: {'/api': {target: backend.origin, changeOrigin: true}}},
     build: {outDir: 'dist', emptyOutDir: true, target: 'es2022'},
   };
 });

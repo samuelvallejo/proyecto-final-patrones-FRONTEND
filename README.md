@@ -77,3 +77,7 @@ La configuración del repositorio publica `frontend/dist` en Vercel o Firebase H
 ## Resultado de esta revisión
 
 Se amplió la guía de TypeScript y se mejoró la navegación accesible: hay un enlace para saltar al contenido, regiones principales identificadas, estado de la página actual en la navegación y nombres accesibles para búsqueda y menú móvil. Estos cambios se limitan al frontend y no modifican el backend ni los flujos de negocio.
+
+## Secure workflows update (2026-10-09)
+
+See [secure workflows](docs/secure-workflows.md) for persistent encrypted HttpOnly sessions, local form limits, the light interface, optional location sharing and private profile recordings. The frontend API proxy must target the Render backend. Configure the private DATA_ENCRYPTION_KEY before deploying Flyway V7; retain the existing JWT_SECRET.

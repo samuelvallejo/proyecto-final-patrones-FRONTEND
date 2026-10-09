@@ -1,5 +1,5 @@
 const worker = self as unknown as ServiceWorkerGlobalScope;
-const cacheName = 'streamguard-typescript-v1';
+const cacheName = 'streamguard-typescript-v2';
 const core = ['/', '/icon.svg', '/manifest.webmanifest', '/locales/es.json', '/locales/noscript.es.html'];
 worker.addEventListener('install', event => {
   event.waitUntil(caches.open(cacheName).then(cache => cache.addAll(core)).then(() => worker.skipWaiting()));

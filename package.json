@@ -11,7 +11,8 @@
     "build": "node scripts/build-web.mjs",
     "preview": "node scripts/serve-web.mjs",
     "check:localization": "node scripts/check-localization.mjs",
-    "test:media": "node --test scripts/media-test.cjs"
+    "test:media": "node --test scripts/media-test.cjs",
+    "test:workflows": "node scripts/security-workflow-test.cjs"
   },
   "devDependencies": {
     "playwright": "1.62.1",
