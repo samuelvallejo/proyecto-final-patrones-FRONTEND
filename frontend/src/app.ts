@@ -598,6 +598,7 @@ export class StreamGuardApp {
       case 'error': toast(typeof event.message === 'string' ? event.message : t('mediaEventFailed'), true); break;
       case 'ended':
         this.broadcasting = false; toast(typeof event.message === 'string' ? event.message : t('uiFinishText104')); media.stop();
+        this.root.querySelector('.floating-player')?.remove();
         if (this.screen === 'studio') this.launch(() => this.loadDashboard(true)); break;
       case 'queue-updated': if (this.screen === 'moderation') this.launch(() => this.loadDashboard(true)); break;
       case 'clips-updated': toast(t('uiRealtimeText119')); if (this.screen === 'clips') this.launch(() => this.loadDashboard(true)); break;
