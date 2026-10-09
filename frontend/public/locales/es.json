@@ -317,5 +317,7 @@
   "mediaRearCamera": "Cámara trasera",
   "mediaUseRearCamera": "Usar cámara trasera",
   "mediaUseFrontCamera": "Usar cámara frontal",
-  "mediaOtherCameraMissing": "No se pudo abrir la otra cámara. Comprueba que tu dispositivo tenga esa cámara y que ninguna otra aplicación la esté usando."
+  "mediaOtherCameraMissing": "No se pudo abrir la otra cámara. Comprueba que tu dispositivo tenga esa cámara y que ninguna otra aplicación la esté usando.",
+  "banUser": "Banear",
+  "banApplied": "Usuario baneado: ya no puede comentar en este canal hasta que se revoque"
 }

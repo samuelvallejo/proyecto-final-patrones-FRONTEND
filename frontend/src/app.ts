@@ -46,7 +46,7 @@ export class StreamGuardApp {
     this.root.replaceChildren(loading);
     const results = await Promise.allSettled([
       this.api.request('GET', '/config'), this.api.request('GET', '/categories'),
-      this.api.token ? this.api.request('GET', '/auth/me') : Promise.resolve(null),
+      this.api.token ? this.api.request('GET', '/users/me') : Promise.resolve(null),
     ]);
     const [config, categories, user] = results;
     if (config?.status === 'fulfilled') this.config = object(config.value);
@@ -142,7 +142,7 @@ export class StreamGuardApp {
   }
   private authView(register: boolean): void {
     this.title(t('welcomeEyebrow'), register ? t('uiAuthViewText38') : t('uiAuthViewText39'), register ? t('uiAuthViewText40') : t('uiAuthViewText41'));
-    const card = panel('form-card auth-card'), username = input(t('uiAuthViewText42')), email = input(t('uiAuthViewText43')), password = input(t('uiAuthViewText44'));
+    const card = panel('form-card auth-card'), username = input(t('uiAuthViewText42')), email = input(t('uiAuthViewText43')), password = input(register ? t('uiAuthViewText44') : t('uiAuthViewText47'));
     email.type = 'email'; email.autocomplete = 'email'; password.type = 'password'; password.autocomplete = register ? 'new-password' : 'current-password';
     password.minLength = register ? 10 : 0;
     const emailField = field(t('uiAuthViewText46'), email), emailHint = document.createElement('small');
@@ -501,7 +501,8 @@ export class StreamGuardApp {
     for (const message of queue) {
       const row = panel('review-row'); row.append(html(`<div class="review-content"><div class="review-meta"><strong>@${escape(text(message, 'username'))}</strong><span class="tag">${escape(text(message, 'category'))}</span><span class="muted">${escape(providerName(text(message, 'provider')))}</span></div><p class="quoted-message">${escape(text(message, 'content'))}</p><p class="muted">${escape(text(message, 'reason'))}</p></div>`));
       const actions = panel('action-row'); actions.append(button(t('uiModerationText126'), 'button primary small', () => this.reviewMessage(message, true)), button(t('uiModerationText127'), 'button danger small', () => this.reviewMessage(message, false)),
-        button(t('muteFiveMinutes'), 'button subtle small', async () => {await this.api.request('POST', `/channels/${this.channel}/sanctions`, {userId: text(message, 'user_id'), type: 'MUTE', seconds: 300, reason: t('uiModerationText128')}); toast(t('uiModerationText129')); await this.loadDashboard(true);}));
+        button(t('muteFiveMinutes'), 'button subtle small', async () => {await this.api.request('POST', `/channels/${this.channel}/sanctions`, {userId: text(message, 'user_id'), type: 'MUTE', seconds: 300, reason: t('uiModerationText128')}); toast(t('uiModerationText129')); await this.loadDashboard(true);}),
+        button(t('banUser'), 'button danger small', async () => {await this.api.request('POST', `/channels/${this.channel}/sanctions`, {userId: text(message, 'user_id'), type: 'BAN', seconds: 30, reason: t('uiModerationText128')}); toast(t('banApplied')); await this.loadDashboard(true);}));
       row.append(actions); list.append(row);
     }
     const sanctions = panel('surface'); sanctions.append(html(`<div class="panel-heading"><h2>${t('activeSanctions')}</h2></div>`)); const entries = rows(this.dashboard.sanctions);
