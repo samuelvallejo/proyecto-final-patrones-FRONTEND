@@ -53,6 +53,17 @@ export function empty(heading: string, body: string): HTMLDivElement {
   const element = html(`<div class="empty-state"><span class="empty-symbol">${icon('spark')}</span><h3>${escape(heading)}</h3><p>${escape(body)}</p></div>`);
   element.style.gridColumn = '1 / -1'; return element;
 }
+export function showLiveEnded(video: HTMLVideoElement): void {
+  const stage = video.closest('.video-stage'); if (!stage) return;
+  video.onplaying = null; video.onended = null;
+  video.pause(); video.srcObject = null; video.removeAttribute('src');
+  video.controls = false; video.hidden = true; video.load(); stage.classList.add('stream-ended');
+  const notice = stage.querySelector<HTMLElement>('.video-placeholder, .collaboration-video-status') ?? panel('video-placeholder');
+  notice.className = 'video-placeholder stream-ended-notice'; notice.hidden = false; notice.style.display = '';
+  notice.setAttribute('role', 'status'); notice.setAttribute('aria-live', 'polite');
+  notice.replaceChildren(html(`<span class="stream-ended-symbol">${icon('camera-off')}</span><h3>${escape(t('liveEndedTitle'))}</h3><p>${escape(t('liveEndedDescription'))}</p>`));
+  if (!notice.parentElement) stage.append(notice);
+}
 export function dialog(title: string) {
   const element = document.createElement('dialog'); element.className = 'app-dialog';
   const heading = document.createElement('h2'); heading.className = 'dialog-heading'; heading.textContent = title;

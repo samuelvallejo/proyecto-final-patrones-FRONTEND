@@ -1,6 +1,6 @@
 import {ApiClient, apiOrigin} from './api';
 import {object, rows, text, flag, mediaConfig, type Json, type Row, type LiveEvent} from './contracts';
-import {panel, html, escape, input, area, field, button, checkbox, select, toast, empty, dialog, icon} from './dom';
+import {panel, html, escape, input, area, field, button, checkbox, select, toast, empty, dialog, icon, showLiveEnded} from './dom';
 import {t} from './i18n';
 import {media} from './media';
 import {CollaborationTile} from './collaboration';
@@ -432,7 +432,7 @@ export class StreamGuardApp {
         void video.play().catch(() => {});
       }
     });
-    actions.append(sound);
+    sound.dataset.liveSound = ''; actions.append(sound);
     player.append(actions); layout.append(player, this.chatPanel()); this.content.append(layout);
     const sharedLocation=document.createElement('a'); sharedLocation.className='shared-location'; sharedLocation.textContent=t('viewSharedLocation'); sharedLocation.target='_blank'; sharedLocation.rel='noopener noreferrer'; sharedLocation.hidden=true; player.append(sharedLocation);
     const refreshLocation=async()=>{
@@ -443,11 +443,17 @@ export class StreamGuardApp {
     this.launch(refreshLocation); this.sharedLocationPoll=window.setInterval(()=>this.launch(refreshLocation),20000);
     this.setupCollaboration(player, text(stream, 'channel_name'));
     if (text(stream, 'status') === 'LIVE') {await this.loadMessages(); media.connect(this.stream, false, event => this.realtime(event));}
-    else toast(t('uiWatchText112'));
+    else this.showEndedLive();
     if (text(stream, 'status') === 'LIVE') {
       await this.syncCollaboration(this.stream);
       this.collaborationPoll = window.setInterval(() => this.launch(() => this.syncCollaboration(this.stream)), 10000);
     }
+  }
+
+  private showEndedLive(): void {
+    const video = document.getElementById('live-video');
+    if (video instanceof HTMLVideoElement) showLiveEnded(video);
+    this.content.querySelector<HTMLElement>('[data-live-sound]')?.setAttribute('hidden', '');
   }
 
   private setupCollaboration(player: HTMLDivElement, name: string): void {
@@ -599,6 +605,7 @@ export class StreamGuardApp {
       case 'ended':
         this.broadcasting = false; toast(typeof event.message === 'string' ? event.message : t('uiFinishText104')); media.stop();
         this.root.querySelector('.floating-player')?.remove();
+        if (this.screen === 'watch') this.showEndedLive();
         if (this.screen === 'studio') this.launch(() => this.loadDashboard(true)); break;
       case 'queue-updated': if (this.screen === 'moderation') this.launch(() => this.loadDashboard(true)); break;
       case 'clips-updated': toast(t('uiRealtimeText119')); if (this.screen === 'clips') this.launch(() => this.loadDashboard(true)); break;

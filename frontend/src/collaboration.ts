@@ -1,5 +1,6 @@
 import {t} from './i18n';
 import {connectionTicket} from './api';
+import {showLiveEnded} from './dom';
 
 type SignalPayload = {description?: RTCSessionDescriptionInit; candidate?: RTCIceCandidateInit};
 
@@ -60,7 +61,7 @@ export class CollaborationTile {
       } else if (event.type === 'signal' && event.payload) {
         await this.accept(event.from, event.payload);
       } else if (event.type === 'ended') {
-        this.stop(); this.waiting(t('collaborationStreamEnded'));
+        this.stop(); showLiveEnded(this.video);
       } else if (event.type === 'error') {
         this.waiting(event.message || t('collaborationUnavailable'));
       }

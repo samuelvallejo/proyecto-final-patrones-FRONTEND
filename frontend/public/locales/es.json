@@ -136,6 +136,8 @@
   "uiWatchText110": "Inicia sesión para seguir este canal",
   "uiWatchText111": "Ya sigues este canal",
   "uiWatchText112": "Esta transmisión ya terminó",
+  "liveEndedTitle": "El live finalizó",
+  "liveEndedDescription": "Gracias por acompañar este directo. Puedes explorar otras transmisiones.",
   "uiChatPanelText113": "<div class='panel-heading'><h2>Chat de la comunidad</h2><span class='mini-tag'>",
   "uiChatPanelText114": "Inicia sesión para conversar",
   "uiChatPanelText115": "Comparte algo con la comunidad",
