@@ -12,7 +12,9 @@
     "preview": "node scripts/serve-web.mjs",
     "check:localization": "node scripts/check-localization.mjs",
     "test:media": "node --test scripts/media-test.cjs",
-    "test:workflows": "node scripts/security-workflow-test.cjs"
+    "test:workflows": "node scripts/security-workflow-test.cjs",
+    "test:patterns": "node --test scripts/moderation-policy-test.cjs",
+    "test:pattern-workflow": "node scripts/pattern-workflow-test.cjs"
   },
   "devDependencies": {
     "playwright": "1.62.1",
