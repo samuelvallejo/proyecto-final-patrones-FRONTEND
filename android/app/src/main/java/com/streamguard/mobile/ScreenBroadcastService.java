@@ -216,7 +216,7 @@ public final class ScreenBroadcastService extends Service {
     }
     private void event(JSONObject data) {broadcast(json("event", data));}
     private void respond(String id, boolean ok) {if (id != null) broadcast(json("id", id, "ok", ok));}
-    private void broadcast(JSONObject data) {main.post(() -> sendBroadcast(new Intent(EVENT).setPackage(getPackageName()).putExtra("payload", data.toString())));}
+    private void broadcast(JSONObject data) {main.post(() -> sendBroadcast(new Intent(EVENT).setPackage(getPackageName()).putExtra("payload", data.toString()), "com.streamguard.mobile.INTERNAL"));}
     @Override public IBinder onBind(Intent intent) {return null;}
     @Override public void onDestroy() {
         capture.post(() -> {

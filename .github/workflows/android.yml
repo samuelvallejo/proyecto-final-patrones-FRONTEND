@@ -26,3 +26,9 @@ jobs:
           name: streamguard-android-unsigned
           path: android/app/build/outputs/apk/release/app-release-unsigned.apk
           retention-days: 14
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: android-lint
+          path: android/app/build/reports/lint-results-release.*
+          retention-days: 7

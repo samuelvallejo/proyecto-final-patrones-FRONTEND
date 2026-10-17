@@ -37,7 +37,10 @@ final class SegmentMuxer {
                     while (extractor.getSampleTrackIndex() >= 0) {
                         buffer.clear(); int size = extractor.readSampleData(buffer, 0); if (size < 0) break;
                         long time = extractor.getSampleTime(); maximum = Math.max(maximum, time + 50000);
-                        info.set(0, size, offset + time, extractor.getSampleFlags());
+                        int sampleFlags = extractor.getSampleFlags();
+                        if ((sampleFlags & MediaExtractor.SAMPLE_FLAG_ENCRYPTED) != 0) throw new IOException("Encrypted sample");
+                        int codecFlags = (sampleFlags & MediaExtractor.SAMPLE_FLAG_SYNC) != 0 ? MediaCodec.BUFFER_FLAG_KEY_FRAME : 0;
+                        info.set(0, size, offset + time, codecFlags);
                         muxer.writeSampleData(mapping.get(extractor.getSampleTrackIndex()), buffer, info); extractor.advance();
                     }
                 } finally {extractor.release();}

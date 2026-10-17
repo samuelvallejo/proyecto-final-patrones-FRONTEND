@@ -12,9 +12,10 @@ android {
         buildConfigField 'String', 'BACKEND', '"https://streamguard-backend-v2.onrender.com"'
     }
     buildFeatures { buildConfig true }
-    compileOptions { sourceCompatibility JavaVersion.VERSION_17; targetCompatibility JavaVersion.VERSION_17 }
+    compileOptions { coreLibraryDesugaringEnabled true; sourceCompatibility JavaVersion.VERSION_17; targetCompatibility JavaVersion.VERSION_17 }
 }
 dependencies {
+    coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs:2.1.5'
     implementation 'androidx.webkit:webkit:1.14.0'
     implementation 'com.squareup.okhttp3:okhttp:4.12.0'
 }

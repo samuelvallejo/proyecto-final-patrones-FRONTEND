@@ -31,7 +31,7 @@ public final class MainActivity extends Activity {
     @Override public void onCreate(Bundle state) {
         super.onCreate(state);
         if (Build.VERSION.SDK_INT >= 33) registerReceiver(updates, new IntentFilter(ScreenBroadcastService.EVENT), Context.RECEIVER_NOT_EXPORTED);
-        else registerReceiver(updates, new IntentFilter(ScreenBroadcastService.EVENT));
+        else registerReceiver(updates, new IntentFilter(ScreenBroadcastService.EVENT), "com.streamguard.mobile.INTERNAL", null);
         browser = new WebView(this); setContentView(browser);
         browser.getSettings().setJavaScriptEnabled(true);
         browser.getSettings().setDomStorageEnabled(true);
@@ -81,8 +81,10 @@ public final class MainActivity extends Activity {
             case "prepare" -> {
                 if (prepareId != null || ScreenBroadcastService.active()) {respond(id, false); return;}
                 prepareId = id; projectionGrant = null;
-                if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) requestPermissions(new String[]{Manifest.permission.RECORD_AUDIO}, MICROPHONE);
-                else requestScreen();
+                List<String> needed = new ArrayList<>();
+                if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) needed.add(Manifest.permission.RECORD_AUDIO);
+                if (Build.VERSION.SDK_INT >= 33 && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) needed.add(Manifest.permission.POST_NOTIFICATIONS);
+                if (needed.isEmpty()) requestScreen(); else requestPermissions(needed.toArray(new String[0]), MICROPHONE);
             }
             case "start" -> {
                 String stream = UUID.fromString(message.getString("stream")).toString();
