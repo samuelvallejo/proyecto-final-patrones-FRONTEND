@@ -379,5 +379,9 @@
   "archiveUploadSlow": "La subida de la grabación es demasiado lenta. Se conservan los fragmentos enviados; el directo continúa.",
   "archiveUploadFailed": "No se pudo guardar un fragmento de la grabación. El directo continúa.",
   "archiveFull": "Se alcanzó el límite de almacenamiento para grabaciones. El directo continúa, pero no se guardarán nuevos fragmentos.",
-  "formRequired": "Completa este campo antes de continuar."
+  "formRequired": "Completa este campo antes de continuar.",
+  "applyModerationPreset": "Aplicar plantilla del nivel seleccionado",
+  "moderationPresetReady": "Plantilla preparada. Revisa los cambios y pulsa Guardar configuración para confirmarlos.",
+  "moderationPresetHelp": "Cada nivel tiene una plantilla de moderación. Aplicarla ajusta la ocultación automática, el silencio y su duración; conserva las palabras, los temas restringidos, los enlaces, el modo lento y los clips. Los cambios solo se guardan cuando pulsas Guardar configuración.",
+  "presetLoadFailed": "No se pudo cargar la plantilla de moderación. Vuelve a intentarlo."
 }
