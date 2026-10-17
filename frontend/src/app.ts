@@ -7,6 +7,8 @@ import {CollaborationTile} from './collaboration';
 import './collaboration.css';
 import {constrain, validate, guidance} from './forms';
 import {beginActivity} from './activity';
+import {ModerationPolicyDraft} from './moderation-policy';
+import './moderation-presets.css';
 import './light.css';
 
 type Screen = 'explore' | 'studio' | 'login' | 'register' | 'watch' | 'public-clips' | 'account' | 'moderation' | 'clips' | 'assistant' | 'settings';
@@ -695,6 +697,8 @@ export class StreamGuardApp {
     this.title(t('uiSettingsText172'), t('uiSettingsText173'), t('uiSettingsText174'));
     if (!this.owner()) {this.content.append(empty(t('uiSettingsText175'), t('uiSettingsText176'))); return;}
     const policy = object(this.dashboard.policy), settings = object(this.dashboard.settings), form = panel('surface settings-form');
+    let draft: ModerationPolicyDraft;
+    try {draft = ModerationPolicyDraft.fromServer(policy);} catch {throw new Error(t('presetLoadFailed'));}
     const level = select([[t('uiSettingsText177'), 'RELAXED'], [t('uiSettingsText178'), 'BALANCED'], [t('uiSettingsText179'), 'STRICT']], text(policy, 'level'));
     const hide = checkbox(t('uiSettingsText181'), flag(policy, 'autoHide')), mute = checkbox(t('uiSettingsText182'), flag(policy, 'autoMute'));
     const links = checkbox(t('uiSettingsText183'), flag(policy, 'allowLinks')), auto = checkbox(t('uiSettingsText184'), flag(settings, 'auto_clips'));
@@ -708,12 +712,35 @@ export class StreamGuardApp {
       if (!seconds.value || !slow.value || !Number.isInteger(muteSeconds) || !Number.isInteger(slowMode)) {toast(t('uiSettingsText192'), true); return;} save.disabled = true;
       try {
         await this.api.request('PUT', `/channels/${this.channel}/policy`, {level: level.value, autoHide: hide.control.checked, autoMute: mute.control.checked,
-          muteSeconds, reviewThreshold: level.value === 'STRICT' ? .4 : level.value === 'RELAXED' ? .7 : .55,
-          blockThreshold: level.value === 'STRICT' ? .7 : level.value === 'RELAXED' ? .95 : .85, allowLinks: links.control.checked, slowMode, autoClips: auto.control.checked,
+          muteSeconds, reviewThreshold: draft.snapshot().reviewThreshold,
+          blockThreshold: draft.snapshot().blockThreshold, allowLinks: links.control.checked, slowMode, autoClips: auto.control.checked,
           blockedWords: lines(words.value), blockedTopics: lines(topics.value)});
         toast(t('uiSettingsText191')); await this.loadDashboard(true);
       } finally {save.disabled = false;}
-    }); form.append(save);
+    });
+    level.addEventListener('change', () => {
+      try {
+        const selected = rows(this.dashboard.moderationPresets).find(value => text(value, 'level') === level.value);
+        draft = ModerationPolicyDraft.fromServer(selected).copy();
+      } catch {level.value = draft.snapshot().level; toast(t('presetLoadFailed'), true);}
+    });
+    const applyPreset = button(t('applyModerationPreset'), 'button subtle', async () => {
+      const channel = this.channel, selected = level.value;
+      save.disabled = level.disabled = hide.control.disabled = mute.control.disabled = seconds.disabled = true;
+      try {
+        const value = await this.api.request('GET', `/channels/${channel}/policy-presets/${selected}`);
+        let next: ModerationPolicyDraft;
+        try {next = ModerationPolicyDraft.fromServer(value).copy();} catch {throw new Error(t('presetLoadFailed'));}
+        if (!form.isConnected || channel !== this.channel) return;
+        draft = next;
+        const snapshot = draft.snapshot();
+        level.value = snapshot.level; hide.control.checked = snapshot.autoHide;
+        mute.control.checked = snapshot.autoMute; seconds.value = String(snapshot.muteSeconds);
+        toast(t('moderationPresetReady'));
+      } finally {save.disabled = level.disabled = hide.control.disabled = mute.control.disabled = seconds.disabled = false;}
+    });
+    const presetActions = panel('action-row preset-actions'); presetActions.append(applyPreset, save); form.append(presetActions);
+    guidance(form, t('moderationPresetHelp'));
     constrain(seconds,{min:30,max:86400,required:true},t('muteDurationHelp')); constrain(slow,{min:0,max:120,required:true},t('slowModeHelp'));
     constrain(words,{max:4049,lines:50,lineLength:80},t('blockedWordsHelp')); constrain(topics,{max:3629,lines:30,lineLength:120},t('blockedTopicsHelp')); guidance(form,t('settingsGuidance'));
     const sharing=checkbox(t('shareLocationLabel'),this.locationChannel===this.channel); form.append(sharing.element);
