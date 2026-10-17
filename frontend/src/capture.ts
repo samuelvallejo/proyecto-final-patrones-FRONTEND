@@ -3,6 +3,7 @@ export interface CaptureEnvironment {
   devices: Pick<MediaDevices, 'getUserMedia'> & Partial<Pick<MediaDevices, 'getDisplayMedia'>>;
   userAgent: string; platform: string; maxTouchPoints: number;
 }
+export interface CaptureDeviceChoice { deviceId: string; label: string; kind: 'audioinput' | 'videoinput' }
 export interface CapturedSources {
   devices: MediaStream; display: MediaStream | null; cameraFallback: boolean;
 }
@@ -10,15 +11,17 @@ export function mediaErrorName(error: unknown): string {
   return typeof error === 'object' && error !== null && 'name' in error && typeof error.name === 'string' ? error.name : '';
 }
 export function screenCaptureSupported(environment: CaptureEnvironment): boolean {
-  const mobile = /Android|iPhone|iPad|iPod/i.test(environment.userAgent)
+  return !mobileCaptureClient(environment) && typeof environment.devices.getDisplayMedia === 'function';
+}
+export function mobileCaptureClient(environment: Pick<CaptureEnvironment, 'userAgent' | 'platform' | 'maxTouchPoints'>): boolean {
+  return /Android|iPhone|iPad|iPod/i.test(environment.userAgent)
     || (/Mac/i.test(environment.platform) && environment.maxTouchPoints > 1);
-  return !mobile && typeof environment.devices.getDisplayMedia === 'function';
 }
 export function browserCaptureEnvironment(): CaptureEnvironment {
   return {devices: navigator.mediaDevices, userAgent: navigator.userAgent,
     platform: navigator.platform, maxTouchPoints: navigator.maxTouchPoints};
 }
-export async function acquireSources(screen: boolean, environment: CaptureEnvironment, facing: 'user' | 'environment' = 'user'): Promise<CapturedSources> {
+export async function acquireSources(screen: boolean, environment: CaptureEnvironment, facing: 'user' | 'environment' = 'user', cameraDeviceId = '', microphoneDeviceId = ''): Promise<CapturedSources> {
   let display: MediaStream | null = null;
   let devices: MediaStream | null = null;
   let cameraFallback = screen && !screenCaptureSupported(environment);
@@ -37,13 +40,15 @@ export async function acquireSources(screen: boolean, environment: CaptureEnviro
       devices = await environment.devices.getUserMedia(android ? {
         // Android camera drivers vary widely; let the browser choose a supported
         // capture size instead of asking for desktop-sized video up front.
-        video: {facingMode: {ideal: facing}}, audio: true,
+        video: cameraDeviceId ? {deviceId: {exact: cameraDeviceId}} : {facingMode: {ideal: facing}},
+        audio: microphoneDeviceId ? {deviceId: {exact: microphoneDeviceId}} : true,
       } : {
-        video: {width: {ideal: 1280}, height: {ideal: 720}, frameRate: {ideal: 24}, facingMode: {ideal: facing}},
-        audio: {echoCancellation: true, noiseSuppression: true, autoGainControl: true},
+        video: cameraDeviceId ? {deviceId: {exact: cameraDeviceId}} : {width: {ideal: 1280}, height: {ideal: 720}, frameRate: {ideal: 24}, facingMode: {ideal: facing}},
+        audio: microphoneDeviceId ? {deviceId: {exact: microphoneDeviceId}} : {echoCancellation: true, noiseSuppression: true, autoGainControl: true},
       });
     } catch (error) {
       const name = mediaErrorName(error);
+      if (cameraDeviceId || microphoneDeviceId) throw error;
       if (name === 'OverconstrainedError' || (name === 'NotFoundError' && !display))
         devices = await environment.devices.getUserMedia({video: {facingMode: {ideal: facing}}, audio: true});
       else if (name === 'NotFoundError' && display) devices = await environment.devices.getUserMedia({audio: true});

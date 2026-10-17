@@ -108,6 +108,7 @@ function mediaHarness(fixture) {
   }};
   const compositor = load('compositor', globals);
   const media = load('media', globals, {'./capture': load('capture', globals), './compositor': compositor,
+    './native-capture': {nativeCapture: {active: () => false, stop() {}}},
     './i18n': {t: key => spanish[key]}, './relay': {relay: {stop() {}, viewerActive: () => false}}, './contracts': {}, './api': {connectionTicket: async () => 'test-ticket'}, './activity': {beginActivity: () => () => {}}}).media;
   return {media, videos, draws, output};
 }
@@ -120,6 +121,19 @@ test('Mobile camera can start without MediaRecorder and both device toggles work
   assert.equal(harness.media.toggleMicrophone(), false); assert.equal(fixture.microphone.enabled, false);
   assert.equal(harness.media.toggleCamera(), true);
   harness.media.stop(); assert.equal(fixture.camera.stopped, true); assert.equal(fixture.microphone.stopped, true);
+});
+
+test('OBS and virtual audio selections are passed as exact device IDs', async () => {
+  const fixture = environment();
+  await capture.acquireSources(false, fixture.environment, 'user', 'obs-device', 'virtual-audio');
+  assert.equal(fixture.constraints[0].video.deviceId.exact, 'obs-device');
+  assert.equal(fixture.constraints[0].audio.deviceId.exact, 'virtual-audio');
+});
+test('A missing selected OBS input never opens a different camera', async () => {
+  const fixture = environment(); let calls = 0;
+  fixture.environment.devices.getUserMedia = async () => {calls++; throw {name: 'NotFoundError'};};
+  await assert.rejects(capture.acquireSources(false, fixture.environment, 'user', 'missing-obs'), error => error.name === 'NotFoundError');
+  assert.equal(calls, 1);
 });
 test('Screen sharing includes webcam, hides its overlay when disabled, and releases every track', async () => {
   const fixture = environment(), harness = mediaHarness(fixture);

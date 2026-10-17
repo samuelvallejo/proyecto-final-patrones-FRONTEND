@@ -50,6 +50,7 @@ if (!['localhost', '127.0.0.1'].includes(new URL(base).hostname)) throw new Erro
     await page.goto(base);
     await page.getByRole('button', {name: ui.myStudio, exact: true}).click();
     await page.getByLabel(ui.uiStudioText93, {exact: true}).fill('Synthetic live');
+    await page.getByLabel(ui.captureSource, {exact: true}).selectOption('browser');
     await page.getByRole('button', {name: ui.uiStudioText96, exact: true}).click();
     await expectCount(0, '.live-heading-status .viewer-counter');
     await page.waitForFunction(() => document.querySelector('.live-heading-status'));

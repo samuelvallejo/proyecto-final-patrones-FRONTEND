@@ -5,6 +5,7 @@ import {acquireSources, browserCaptureEnvironment, mediaErrorName, screenCapture
 import {compositeVideo, type CompositeVideo} from './compositor';
 import {connectionTicket} from './api';
 import {beginActivity} from './activity';
+import {nativeCapture} from './native-capture';
 
 interface Segment {blob: Blob; start: number; end: number}
 interface SpeechResult {isFinal: boolean; [index: number]: {transcript: string}}
@@ -78,6 +79,11 @@ async function request(path: string, body: Json | FormData, silent=false): Promi
 }
 function emit(event: LiveEvent): void { state.callback(event); }
 function attach(): void {
+  if (nativeCapture.active()) {
+    const placeholder = document.getElementById('video-placeholder');
+    if (placeholder) {placeholder.textContent = t('nativeScreenPreview'); placeholder.style.display = '';}
+    return;
+  }
   if (!state.host && relay.viewerActive()) return;
   const element = document.getElementById('live-video'); const source = state.host ? state.local : state.remote;
   if (element instanceof HTMLVideoElement && source) {
@@ -106,11 +112,12 @@ function awaitVideo(): void {
     if (!connected) useRelay();
   }, 8000);
 }
-async function prepare(screen: boolean, facing: 'user' | 'environment' = 'user'): Promise<void> {
+async function prepare(screen: boolean, facing: 'user' | 'environment' = 'user', cameraDeviceId = '', microphoneDeviceId = '', nativeScreen = false): Promise<void> {
+  if (nativeScreen) {stop(); state.stopping = false; await nativeCapture.prepare(); state.host = true; return;}
   if (!navigator.mediaDevices?.getUserMedia) throw new Error(t('mediaText02'));
   stop(); state.stopping = false;
   try {
-    const captured = await acquireSources(screen, browserCaptureEnvironment(), facing);
+    const captured = await acquireSources(screen, browserCaptureEnvironment(), facing, cameraDeviceId, microphoneDeviceId);
     state.captures.push(captured.devices);
     if (captured.display) state.captures.push(captured.display);
     state.microphone = captured.devices.getAudioTracks()[0] ?? null;
@@ -228,6 +235,10 @@ async function signal(event: LiveEvent): Promise<void> {
   }
 }
 function connect(stream: string, host: boolean, callback: (event: LiveEvent) => void): void {
+  if (host && nativeCapture.active()) {
+    state.stream = stream; state.host = true; state.callback = callback; state.stopping = false;
+    void nativeCapture.start(stream, callback).then(attach).catch(() => {stop(); callback({type: 'ended', message: t('nativeCaptureFailed')});}); return;
+  }
   window.clearTimeout(state.fallbackTimer); state.fallbackTimer = undefined;
   window.clearTimeout(state.reconnectTimer); window.clearInterval(state.keepAliveTimer);
   if (state.ws) {state.ws.onclose = null; state.ws.close();} closePeers();
@@ -244,7 +255,7 @@ function connect(stream: string, host: boolean, callback: (event: LiveEvent) => 
         state.keepAliveTimer = window.setInterval(() => send({type: 'ping'}), 20000);
         if (host && !state.recorder) {state.started = Date.now(); startRecording(); startAudio();}
         if (host && state.config.mediaRelayConfigured && recorderType()) relay.start(state.api, state.token, stream, state.local, recorderType() ?? '', message => emit({type: 'notice', body: message}));
-        if (!host && event.hostOnline) awaitVideo();
+        if (!host && event.hostOnline) {if (event.mediaTransport === 'relay') useRelay(); else awaitVideo();}
         attach();
       }
       if (event.type === 'error' && !joined) {
@@ -252,7 +263,7 @@ function connect(stream: string, host: boolean, callback: (event: LiveEvent) => 
         ws.onclose = null; stop();
       }
       if (event.type === 'presence' && !host) {
-        if (event.hostOnline === false) closePeers(); else awaitVideo();
+        if (event.hostOnline === false) closePeers(); else if (event.mediaTransport === 'relay') useRelay(); else awaitVideo();
       }
       if (event.type === 'viewer-joined' && host && event.peerId) {
         const peer = createPeer(event.peerId); await peer.setLocalDescription(await peer.createOffer());
@@ -315,6 +326,7 @@ function archiveSegment(segment: Segment): void {
   }).finally(() => {queuedArchiveParts--;});
 }
 async function finalizeRecording(): Promise<void> {
+  if (nativeCapture.active()) {await nativeCapture.flush(); return;}
   const done = beginActivity(); finalizing = true; window.clearTimeout(state.interval);
   try {
     const recorder = state.recorder;
@@ -395,6 +407,7 @@ async function share(asset: string, title: string): Promise<boolean> {
   }
 }
 function stop(): void {
+  nativeCapture.stop();
   state.generation++; state.switchingCamera = false;
   window.clearTimeout(state.fallbackTimer); state.fallbackTimer = undefined; relay.stop();
   window.clearTimeout(state.reconnectTimer); window.clearInterval(state.keepAliveTimer); state.reconnectAttempts = 0;
@@ -414,15 +427,17 @@ function stop(): void {
 }
 export const media = {
   configure(api: string, token: string, config: MediaConfig): void {state.api = api.replace(/\/$/, ''); state.token = token; state.config = config;},
-  prepare: async (screen: boolean, facing: 'user' | 'environment' = 'user') => {finalizing=false; archiveBlocked=false; await prepare(screen, facing);},
+  prepare: async (screen: boolean, facing: 'user' | 'environment' = 'user', cameraDeviceId = '', microphoneDeviceId = '', nativeScreen = false) => {finalizing=false; archiveBlocked=false; await prepare(screen, facing, cameraDeviceId, microphoneDeviceId, nativeScreen);},
   connect, attach, stop, captions, playback, share, messageForError, switchCamera, finalizeRecording,
+  nativeScreenActive(): boolean {return nativeCapture.active();},
   cameraFacing(): 'user' | 'environment' {return state.facing;},
   toggleMicrophone(): boolean {
+    if (nativeCapture.active()) return nativeCapture.toggleMicrophone();
     if (!state.microphone) return false;
     state.microphone.enabled = !state.microphone.enabled;
     return state.microphone.enabled;
   },
-  microphoneEnabled(): boolean {return state.microphone?.enabled ?? false;},
+  microphoneEnabled(): boolean {return nativeCapture.active() ? nativeCapture.microphoneEnabled() : state.microphone?.enabled ?? false;},
   cameraAvailable(): boolean {return state.camera !== null && state.camera.readyState === 'live';},
   cameraEnabled(): boolean {return state.camera?.enabled ?? false;},
   toggleCamera(): boolean {

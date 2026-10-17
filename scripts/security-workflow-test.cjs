@@ -31,6 +31,7 @@ const base=process.env.TEST_WEB_URL||'http://localhost:5173';
   assert.equal(await page.getByLabel(ui.shareLocationLabel).isChecked(),false);assert.equal(await page.locator('input[maxlength="40"]').count(),0);
   await page.getByLabel(ui.uiCreateChannelText59,{exact:true}).fill('Review channel');await page.getByRole('button',{name:ui.uiCreateChannelText65,exact:true}).click();
   await page.getByLabel(ui.uiStudioText93,{exact:true}).waitFor();await page.getByLabel(ui.uiStudioText93,{exact:true}).fill('Synthetic live review');
+  await page.getByLabel(ui.captureSource,{exact:true}).selectOption('browser');
   await page.getByRole('button',{name:ui.uiStudioText96,exact:true}).click();await page.getByRole('button',{name:ui.uiStudioText87,exact:true}).waitFor({timeout:55000});
   await page.waitForFunction(()=>document.querySelector('#live-video')?.videoWidth>0);
   const viewerContext=await browser.newContext({viewport:{width:1200,height:850}});

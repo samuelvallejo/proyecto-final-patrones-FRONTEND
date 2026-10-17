@@ -13,7 +13,7 @@ export function flag(value: Row, key: string): boolean { return value[key] === t
 export interface MediaConfig { iceServers?: RTCIceServer[]; mediaRelayConfigured?: boolean }
 export interface LiveEvent {
   type: string; message?: Json; body?: string; viewers?: number; error?: boolean; hostOnline?: boolean; retryable?: boolean;
-  peerId?: string; from?: string; highlightId?: string; text?: string;
+  peerId?: string; from?: string; highlightId?: string; text?: string; mediaTransport?: string;
   payload?: {description?: RTCSessionDescriptionInit; candidate?: RTCIceCandidateInit};
 }
 export function liveEvent(value: unknown): LiveEvent {

@@ -14,6 +14,7 @@ let sourceUrl = '';
 let fragmentUrl = '';
 let queue: ArrayBuffer[] = [];
 let mime = '';
+let independentFiles = false;
 let viewers = 0;
 let session: {api: string; token: string; stream: string; local: MediaStream | null; format: string; notice: (message: string) => void} | null = null;
 
@@ -76,13 +77,13 @@ function resetPlayer(): void {
   video = null;
 }
 
-function player(format: string): void {
+function player(format: string, files = independentFiles): void {
   const element = document.getElementById('live-video');
   if (!(element instanceof HTMLVideoElement)) return;
-  if (video === element && mime === format) return;
-  resetPlayer(); mime = format; video = element; video.srcObject = null;
+  if (video === element && mime === format && independentFiles === files) return;
+  resetPlayer(); mime = format; independentFiles = files; video = element; video.srcObject = null;
   video.dataset.transport = 'relay'; video.onplaying = playing;
-  if (window.MediaSource && MediaSource.isTypeSupported(format)) {
+  if (!files && window.MediaSource && MediaSource.isTypeSupported(format)) {
     const media = new MediaSource(); source = media; sourceUrl = URL.createObjectURL(media); video.src = sourceUrl;
     media.addEventListener('sourceopen', () => {
       if (source !== media) return;
@@ -120,7 +121,7 @@ function open(): void {
         viewers = Number(data.viewers) || 0;
         if (viewers) publish(); else stopRecording();
       }
-      if (text(data, 'type') === 'relay-format') player(text(data, 'format'));
+      if (text(data, 'type') === 'relay-format') player(text(data, 'format'), data.fragmentMode === 'file');
       if (text(data, 'type') === 'error') current.notice(text(data, 'message'));
       if (!heartbeat) heartbeat = window.setInterval(() => {if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({type: 'ping'}));}, 20000);
     } catch (error) {console.warn('Relay event rejected', error);}

@@ -12,6 +12,8 @@ import './moderation-presets.css';
 import './light.css';
 import {GeminiChatView} from './gemini-chat';
 import {viewerCounter, viewerNumber, updateViewerCounters} from './viewer-count';
+import {StudioInputs} from './studio-inputs';
+import {browserCaptureEnvironment, mobileCaptureClient} from './capture';
 
 type Screen = 'explore' | 'studio' | 'login' | 'register' | 'watch' | 'public-clips' | 'account' | 'moderation' | 'clips' | 'assistant' | 'gemini-chat' | 'settings';
 const adminScreens: Screen[] = ['studio', 'moderation', 'clips', 'assistant', 'settings'];
@@ -153,9 +155,13 @@ export class StreamGuardApp {
     const floating=panel('floating-player');
     floating.append(html(`<div class="floating-heading"><span class="status-dot"></span><strong>${escape(t('floatingLive'))}</strong></div><video id="live-video" autoplay playsinline muted></video>`));
     floating.querySelector('.floating-heading')?.append(viewerCounter(this.viewerCount));
+    if (media.nativeScreenActive()) {
+      const video = floating.querySelector('video'); if (video) video.style.display = 'none';
+      const status = panel('capture-hint'); status.textContent = t('nativeScreenPreview'); floating.append(status);
+    }
     floating.append(button(t('returnToStudio'),'button primary small',()=>this.route('studio')),button(t('pictureInPicture'),'button subtle small',async()=>{
       const video=floating.querySelector('video');
-      if (video && document.pictureInPictureEnabled && video.requestPictureInPicture) await video.requestPictureInPicture();
+      if (!media.nativeScreenActive() && video && document.pictureInPictureEnabled && video.requestPictureInPicture) await video.requestPictureInPicture();
       else toast(t('pictureInPictureUnavailable'));
     }));
     this.root.append(floating); queueMicrotask(()=>media.attach());
@@ -394,6 +400,7 @@ export class StreamGuardApp {
         switchCamera.setAttribute('aria-label', switchCamera.textContent ?? '');
       };
       updateCameraLabel(); switchCamera.disabled = !media.cameraAvailable();
+      if (!mobileCaptureClient(browserCaptureEnvironment()) || media.nativeScreenActive()) switchCamera.style.display = 'none';
       actions.append(button(t('uiStudioText82'), 'button primary', async () => {await this.api.request('POST', `/streams/${this.stream}/highlights`, {source: 'MANUAL', reason: t('uiStudioText83')}); toast(t('uiStudioText84'));}),
         microphone, camera, switchCamera, button(t('uiStudioText85'), 'button subtle', async () => {await media.captions(); toast(t('uiStudioText86'));}), button(t('uiStudioText87'), 'button danger', () => this.finish()));
       left.append(actions);
@@ -405,17 +412,23 @@ export class StreamGuardApp {
       const shareScreen = checkbox(t('uiStudioText92')); const row = panel('form-row');
       row.append(field(t('uiStudioText94'), categories), field(t('uiCreateChannelText64'), description));
       const cameraFacing = select([[t('mediaFrontCamera'), 'user'], [t('mediaRearCamera'), 'environment']]);
-      shareScreen.control.disabled = !media.screenSharingSupported();
+      const inputs = new StudioInputs();
+      shareScreen.control.disabled = !media.screenSharingSupported() || inputs.mode.value !== 'browser';
       if (shareScreen.control.disabled) shareScreen.control.checked = false;
-      form.append(field(t('uiStudioText93'), name), row, field(t('mediaCameraSelection'), cameraFacing), shareScreen.element);
+      const facingField = field(t('mediaCameraSelection'), cameraFacing);
+      facingField.style.display = !inputs.mobile || inputs.mode.value === 'android' ? 'none' : '';
+      form.append(field(t('uiStudioText93'), name), row, facingField, shareScreen.element);
+      form.append(inputs.element);
+      inputs.mode.addEventListener('change', () => {facingField.style.display = !inputs.mobile || inputs.mode.value === 'android' ? 'none' : ''; shareScreen.control.disabled = !media.screenSharingSupported() || inputs.mode.value !== 'browser'; if (shareScreen.control.disabled) shareScreen.control.checked = false;});
       const mediaHint = panel('capture-hint');
-      mediaHint.textContent = shareScreen.control.disabled ? t('mediaMobileCameraHint') : t('mediaDevicePermissionsHint');
+      mediaHint.textContent = inputs.mobile ? t('mediaMobileCameraHint') : t('mediaDevicePermissionsHint');
       form.append(mediaHint);
       constrain(name,{max:140,required:true},t('streamTitleHelp')); constrain(description,{max:2000},t('descriptionHelp')); guidance(form,t('streamGuidance'));
       const start = button(t('uiStudioText96'), 'button primary', async () => {
         if (!validate(form)) return; start.disabled = true;
         try {
-          await media.prepare(shareScreen.control.checked, cameraFacing.value === 'environment' ? 'environment' : 'user');
+          inputs.validate();
+          await media.prepare(inputs.mode.value === 'browser' && shareScreen.control.checked, cameraFacing.value === 'environment' ? 'environment' : 'user', inputs.camera.value, inputs.microphone.value, inputs.mode.value === 'android');
           if (media.usedCameraFallback()) toast(t('mediaScreenFallback'));
           const result = object(await this.api.request('POST', '/streams', {title: name.value, description: description.value, categoryId: categories.value}));
           this.stream = text(result, 'id'); this.viewerStream = this.stream; this.viewerCount = 0; this.broadcasting = true; media.connect(this.stream, true, event => this.realtime(event)); await this.loadDashboard(true);
