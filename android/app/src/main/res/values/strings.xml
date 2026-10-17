@@ -1,0 +1,10 @@
+<resources>
+    <string name="app_name">StreamGuard</string>
+    <string name="capture_title">Tu pantalla está en directo</string>
+    <string name="capture_description">StreamGuard comparte tu pantalla y micrófono. Toca para volver al estudio.</string>
+    <string name="stop_capture">Finalizar directo</string>
+    <string name="capture_failed">No se pudo iniciar la captura. Revisa los permisos e inténtalo nuevamente.</string>
+    <string name="webview_required">Actualiza Android System WebView o Chrome para usar la captura de pantalla.</string>
+    <string name="capture_channel">Transmisiones en vivo</string>
+    <string name="archive_failed">El video en vivo continúa, pero no se pudo guardar una parte de la grabación.</string>
+</resources>

@@ -1,0 +1,20 @@
+plugins { id 'com.android.application' }
+android {
+    namespace 'com.streamguard.mobile'
+    compileSdk 36
+    defaultConfig {
+        applicationId 'com.streamguard.mobile'
+        minSdk 26
+        targetSdk 35
+        versionCode 1
+        versionName '1.0.0'
+        buildConfigField 'String', 'FRONTEND', '"https://streamguard-frontend.vercel.app"'
+        buildConfigField 'String', 'BACKEND', '"https://streamguard-backend-v2.onrender.com"'
+    }
+    buildFeatures { buildConfig true }
+    compileOptions { sourceCompatibility JavaVersion.VERSION_17; targetCompatibility JavaVersion.VERSION_17 }
+}
+dependencies {
+    implementation 'androidx.webkit:webkit:1.14.0'
+    implementation 'com.squareup.okhttp3:okhttp:4.12.0'
+}
