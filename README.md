@@ -2,6 +2,12 @@
 
 Interfaz web adaptable de StreamGuard, construida con **TypeScript**, **Vite** y CSS. La aplicación está en español y se publica por separado del backend.
 
+## Moderation templates and design patterns
+
+The settings form integrates the backend Prototype and Facade workflows with validated,
+independent policy drafts. See [moderation presets](docs/moderation-presets.md) for usage,
+the four additional design patterns and the shared policy-contract test suite.
+
 ## Tecnologías y responsabilidades
 
 - **TypeScript estricto** para la interfaz, las llamadas HTTP, la señalización en tiempo real, la captura de medios y el service worker.
