@@ -10,6 +10,7 @@ import android.os.*;
 import android.webkit.*;
 import android.widget.Toast;
 import androidx.webkit.*;
+import androidx.core.content.ContextCompat;
 import java.util.*;
 import org.json.JSONObject;
 
@@ -24,14 +25,13 @@ public final class MainActivity extends Activity {
     private final BroadcastReceiver updates = new BroadcastReceiver() {
         @Override public void onReceive(Context context, Intent intent) {
             String payload = intent.getStringExtra("payload");
-            if (reply != null && payload != null) reply.postMessage(payload);
+            if (reply != null && payload != null && WebViewFeature.isFeatureSupported(WebViewFeature.WEB_MESSAGE_LISTENER)) reply.postMessage(payload);
         }
     };
 
     @Override public void onCreate(Bundle state) {
         super.onCreate(state);
-        if (Build.VERSION.SDK_INT >= 33) registerReceiver(updates, new IntentFilter(ScreenBroadcastService.EVENT), Context.RECEIVER_NOT_EXPORTED);
-        else registerReceiver(updates, new IntentFilter(ScreenBroadcastService.EVENT), "com.streamguard.mobile.INTERNAL", null);
+        ContextCompat.registerReceiver(this, updates, new IntentFilter(ScreenBroadcastService.EVENT), "com.streamguard.mobile.INTERNAL", null, ContextCompat.RECEIVER_NOT_EXPORTED);
         browser = new WebView(this); setContentView(browser);
         browser.getSettings().setJavaScriptEnabled(true);
         browser.getSettings().setDomStorageEnabled(true);
@@ -127,7 +127,7 @@ public final class MainActivity extends Activity {
         }
     }
     private void respond(String id, boolean ok) {
-        try {if (reply != null && id != null) reply.postMessage(new JSONObject().put("id", id).put("ok", ok).toString());} catch (Exception ignored) {}
+        try {if (reply != null && id != null && WebViewFeature.isFeatureSupported(WebViewFeature.WEB_MESSAGE_LISTENER)) reply.postMessage(new JSONObject().put("id", id).put("ok", ok).toString());} catch (Exception ignored) {}
     }
     @Override public void onBackPressed() {if (browser.canGoBack()) browser.goBack(); else super.onBackPressed();}
     @Override protected void onPause() {CookieManager.getInstance().flush(); super.onPause();}
