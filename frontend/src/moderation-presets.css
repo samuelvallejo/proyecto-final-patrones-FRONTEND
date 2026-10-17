@@ -1,0 +1,9 @@
+.preset-actions {
+  align-items: stretch;
+}
+
+.preset-actions .button {
+  max-width: 100%;
+  white-space: normal;
+  text-align: center;
+}
