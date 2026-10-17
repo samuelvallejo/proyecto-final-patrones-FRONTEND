@@ -407,5 +407,8 @@
   "geminiChatLoadFailed": "No se pudo comprobar la disponibilidad del chat. Vuelve a abrir esta sección para intentarlo de nuevo.",
   "geminiChatFailed": "Gemini no pudo responder. Inténtalo de nuevo en unos momentos.",
   "aiProviderConfigured": "IA configurada",
-  "aiModelLabel": "Modelo"
+  "aiModelLabel": "Modelo",
+  "viewerCounterOne": "{count} espectador",
+  "viewerCounterMany": "{count} espectadores",
+  "viewerCounterHelp": "Espectadores conectados ahora. No incluye la conexión que transmite."
 }

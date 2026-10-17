@@ -11,6 +11,7 @@ import {ModerationPolicyDraft} from './moderation-policy';
 import './moderation-presets.css';
 import './light.css';
 import {GeminiChatView} from './gemini-chat';
+import {viewerCounter, viewerNumber, updateViewerCounters} from './viewer-count';
 
 type Screen = 'explore' | 'studio' | 'login' | 'register' | 'watch' | 'public-clips' | 'account' | 'moderation' | 'clips' | 'assistant' | 'gemini-chat' | 'settings';
 const adminScreens: Screen[] = ['studio', 'moderation', 'clips', 'assistant', 'settings'];
@@ -37,7 +38,8 @@ export class StreamGuardApp {
   private broadcasting = false;
   private mobileNav = false;
   private chatList: HTMLDivElement | null = null;
-  private audience: HTMLSpanElement | null = null;
+  private viewerCount = 0;
+  private viewerStream = '';
   private readonly messageIds = new Set<string>();
   private epoch = 0;
   private collaborationTiles = new Map<string, CollaborationTile>();
@@ -52,6 +54,7 @@ export class StreamGuardApp {
   constructor(private readonly root: HTMLElement) {
     this.api.onUnauthorized = () => {
       this.geminiChat.clear();
+      this.viewerCount = 0; this.viewerStream = '';
       this.user = null;
       if (this.broadcasting) {media.stop(); this.broadcasting=false;}
       this.stopLocation(); this.configureMedia();
@@ -121,7 +124,7 @@ export class StreamGuardApp {
     this.clearCollaboration();
     window.clearInterval(this.sharedLocationPoll); this.sharedLocationPoll=0;
     if (!this.broadcasting && this.screen === 'watch') media.stop();
-    this.screen = next; this.mobileNav = false; this.epoch++; this.messageIds.clear(); this.audience = null;
+    this.screen = next; this.mobileNav = false; this.epoch++; this.messageIds.clear();
     this.shell(); window.scrollTo(0,0); this.launch(() => this.render());
   }
   private async render(): Promise<void> {
@@ -149,6 +152,7 @@ export class StreamGuardApp {
   private floatingPlayer(): void {
     const floating=panel('floating-player');
     floating.append(html(`<div class="floating-heading"><span class="status-dot"></span><strong>${escape(t('floatingLive'))}</strong></div><video id="live-video" autoplay playsinline muted></video>`));
+    floating.querySelector('.floating-heading')?.append(viewerCounter(this.viewerCount));
     floating.append(button(t('returnToStudio'),'button primary small',()=>this.route('studio')),button(t('pictureInPicture'),'button subtle small',async()=>{
       const video=floating.querySelector('video');
       if (video && document.pictureInPictureEnabled && video.requestPictureInPicture) await video.requestPictureInPicture();
@@ -302,6 +306,7 @@ export class StreamGuardApp {
     const snapshot = object(await this.api.request('GET', `/channels/${channel}/dashboard`,undefined,!render));
     if (epoch !== this.epoch || channel !== this.channel || !adminScreens.includes(this.screen)) return;
     this.dashboard = snapshot;
+    this.rememberViewers(object(snapshot.stream));
     if (!render && this.screen !== 'moderation') {this.updateStats(); for (const banner of this.content.querySelectorAll('.ai-provider-status')) banner.replaceWith(this.aiStatus()); return;}
     this.content.replaceChildren(); this.chatList = null;
     switch (this.screen) {
@@ -329,6 +334,13 @@ export class StreamGuardApp {
     for (const element of this.content.querySelectorAll<HTMLElement>('[data-stat]')) element.textContent = text(stats, element.dataset.stat ?? '');
   }
   private owner(): boolean {return this.user !== null && text(object(this.dashboard.channel), 'owner_id') === text(this.user, 'id');}
+  private rememberViewers(stream: Row): void {
+    const id = text(stream, 'id'); if (!id) return;
+    if (this.viewerStream !== id || typeof stream.viewers === 'number') {
+      this.viewerStream = id; this.viewerCount = text(stream, 'status') === 'LIVE' ? viewerNumber(stream.viewers) : 0;
+      updateViewerCounters(this.root, this.viewerCount);
+    }
+  }
   private studio(): void {
     this.clearCollaboration();
     this.title(t('uiStudioText74'), t('studioGreeting') + text(this.user, 'username') + ' ✦', t('uiStudioText75')); this.stats();
@@ -338,7 +350,13 @@ export class StreamGuardApp {
       if (text(latest, 'status') === 'LIVE') this.content.append(button(t('uiStudioText77'), 'button primary', () => {this.stream = text(latest, 'id'); this.route('watch');})); return;
     }
     const layout = panel('studio-grid'), left = panel('surface'), right = panel('surface studio-assistant');
-    left.append(html(t('uiStudioText78') + (this.broadcasting ? t('uiStudioText79') : t('uiStudioText80')) + "</span></div><div class='video-stage'><video id='live-video' autoplay playsinline muted></video><div class='video-placeholder' id='video-placeholder'>" + icon('video') + t('uiStudioText81')));
+    const live = this.broadcasting || text(latest, 'status') === 'LIVE';
+    left.append(html(t('uiStudioText78') + (live ? t('uiStudioText79') : t('uiStudioText80')) + "</span></div><div class='video-stage'><video id='live-video' autoplay playsinline muted></video><div class='video-placeholder' id='video-placeholder'>" + icon('video') + t('uiStudioText81')));
+    if (live) {
+      const heading = left.querySelector('.panel-heading'), status = heading?.querySelector('.tag');
+      const indicators = panel('live-heading-status'); if (status) indicators.append(status);
+      indicators.append(viewerCounter(this.viewerCount)); heading?.append(indicators);
+    }
     if (this.broadcasting) {
       const actions = panel('action-row');
       const microphone = button('', 'button subtle media-toggle', () => {
@@ -400,7 +418,7 @@ export class StreamGuardApp {
           await media.prepare(shareScreen.control.checked, cameraFacing.value === 'environment' ? 'environment' : 'user');
           if (media.usedCameraFallback()) toast(t('mediaScreenFallback'));
           const result = object(await this.api.request('POST', '/streams', {title: name.value, description: description.value, categoryId: categories.value}));
-          this.stream = text(result, 'id'); this.broadcasting = true; media.connect(this.stream, true, event => this.realtime(event)); await this.loadDashboard(true);
+          this.stream = text(result, 'id'); this.viewerStream = this.stream; this.viewerCount = 0; this.broadcasting = true; media.connect(this.stream, true, event => this.realtime(event)); await this.loadDashboard(true);
         } catch (error) {if (!this.broadcasting) media.stop(); throw error;} finally {start.disabled = false;}
       });
       form.append(start); left.append(form);
@@ -427,11 +445,12 @@ export class StreamGuardApp {
     this.clearCollaboration();
     this.title(t('uiWatchText105'), t('uiWatchText106'), t('uiWatchText107')); const epoch = this.epoch;
     const stream = object(await this.api.request('GET', `/streams/${this.stream}`)); if (epoch !== this.epoch) return;
+    this.rememberViewers(stream);
     this.content.replaceChildren(); this.title(text(stream, 'channel_name'), text(stream, 'title'), text(stream, 'description'));
     const layout = panel('watch-grid'), player = panel('surface');
     player.append(html("<div class='video-stage'><video id='live-video' autoplay playsinline muted controls></video><div class='video-placeholder' id='video-placeholder'>" + icon('video') + t('uiWatchText108')));
-    const actions = panel('action-row'); this.audience = document.createElement('span'); this.audience.textContent = text(stream, 'viewers') + t('viewerCountSuffix');
-    actions.append(this.audience, button(t('uiWatchText109'), 'button primary small', async () => {
+    const actions = panel('action-row');
+    actions.append(viewerCounter(this.viewerCount), button(t('uiWatchText109'), 'button primary small', async () => {
       if (!this.user) {toast(t('uiWatchText110'), true); return;}
       await this.api.request('POST', `/channels/${text(stream, 'channel_id')}/follow`, {}); toast(t('uiWatchText111'));
     }));
@@ -607,12 +626,14 @@ export class StreamGuardApp {
     switch (event.type) {
       case 'message': this.appendMessage(object(event.message)); break;
       case 'presence':
-        if (this.audience) this.audience.textContent = String(event.viewers ?? 0) + t('viewerCountSuffix');
+        this.viewerStream = this.stream; this.viewerCount = viewerNumber(event.viewers);
+        updateViewerCounters(this.root, this.viewerCount);
         if (event.hostOnline === false) toast(t('uiHostDisconnected'));
         break;
       case 'notice': toast(event.body ?? ''); break;
       case 'error': toast(typeof event.message === 'string' ? event.message : t('mediaEventFailed'), true); break;
       case 'ended':
+        this.viewerCount = 0; updateViewerCounters(this.root, 0);
         this.broadcasting = false; toast(typeof event.message === 'string' ? event.message : t('uiFinishText104')); media.stop();
         this.root.querySelector('.floating-player')?.remove();
         if (this.screen === 'watch') this.showEndedLive();

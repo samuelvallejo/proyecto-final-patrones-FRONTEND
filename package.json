@@ -15,7 +15,8 @@
     "test:workflows": "node scripts/security-workflow-test.cjs",
     "test:patterns": "node --test scripts/moderation-policy-test.cjs",
     "test:pattern-workflow": "node scripts/pattern-workflow-test.cjs",
-    "test:gemini-chat": "node scripts/gemini-chat-test.cjs"
+    "test:gemini-chat": "node scripts/gemini-chat-test.cjs",
+    "test:viewers": "node scripts/viewer-count-test.cjs"
   },
   "devDependencies": {
     "playwright": "1.62.1",
