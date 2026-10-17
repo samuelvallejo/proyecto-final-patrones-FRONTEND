@@ -10,13 +10,15 @@ import {beginActivity} from './activity';
 import {ModerationPolicyDraft} from './moderation-policy';
 import './moderation-presets.css';
 import './light.css';
+import {GeminiChatView} from './gemini-chat';
 
-type Screen = 'explore' | 'studio' | 'login' | 'register' | 'watch' | 'public-clips' | 'account' | 'moderation' | 'clips' | 'assistant' | 'settings';
+type Screen = 'explore' | 'studio' | 'login' | 'register' | 'watch' | 'public-clips' | 'account' | 'moderation' | 'clips' | 'assistant' | 'gemini-chat' | 'settings';
 const adminScreens: Screen[] = ['studio', 'moderation', 'clips', 'assistant', 'settings'];
 
 /** Responsive UI, authentication and workflows; server permissions remain authoritative. */
 export class StreamGuardApp {
   private readonly api = new ApiClient();
+  private readonly geminiChat = new GeminiChatView(this.api);
   private content = panel('page-content');
   private user: Row | null = null;
   private config: Row = {};
@@ -49,6 +51,7 @@ export class StreamGuardApp {
 
   constructor(private readonly root: HTMLElement) {
     this.api.onUnauthorized = () => {
+      this.geminiChat.clear();
       this.user = null;
       if (this.broadcasting) {media.stop(); this.broadcasting=false;}
       this.stopLocation(); this.configureMedia();
@@ -85,6 +88,7 @@ export class StreamGuardApp {
     const first = panel('nav-list'); first.append(this.navButton('explore', t('uiShellText08'), 'grid'), this.navButton('studio', t('myStudio'), 'video'));
     const second = panel('nav-list'); second.append(this.navButton('moderation', t('uiShellText10'), 'shield'), this.navButton('clips', t('uiShellText11'), 'play'), this.navButton('assistant', t('uiShellText12'), 'spark'), this.navButton('settings', t('uiShellText13'), 'settings'));
     const navigation = document.createElement('nav'); navigation.id = 'main-navigation'; navigation.setAttribute('aria-label', t('mainNavigationLabel'));
+    second.insertBefore(this.navButton('gemini-chat', t('geminiChatNavigation'), 'spark'), second.lastElementChild);
     navigation.append(html(t('uiShellText07')), first, html(t('uiShellText09')), second);
     side.append(navigation, html(t('uiShellText14')));
     const main = panel('main-shell'), header = panel('topbar');
@@ -129,6 +133,10 @@ export class StreamGuardApp {
     if (this.screen === 'public-clips') return this.publicClips();
     if (!this.user) {this.authView(false); return;}
     if (this.screen === 'account') return this.account();
+    if (this.screen === 'gemini-chat') {
+      this.title(t('geminiChatEyebrow'), t('geminiChatTitle'), t('geminiChatDescription'));
+      const chat = panel('gemini-chat-container'); this.content.append(chat); await this.geminiChat.mount(chat); return;
+    }
     if (!this.channel) {
       const epoch = this.epoch; const channels = rows(await this.api.request('GET', '/channels/mine'));
       if (epoch !== this.epoch) return;
@@ -230,7 +238,7 @@ export class StreamGuardApp {
         const body: Row = {email: email.value.trim(), password: password.value}; if (register) {body.username = username.value; body.aiConsent = consent.control.checked;}
         await this.api.request('POST', register ? '/auth/register' : '/auth/login', body);
         password.value=''; this.user=object(await this.api.request('GET','/users/me')); await this.bootstrap();
-        this.channel = ''; this.dashboard = {}; toast(t('authSuccess')); this.route('explore');
+        this.geminiChat.clear(); this.channel = ''; this.dashboard = {}; toast(t('authSuccess')); this.route('explore');
       } catch {toast(t('authFailed'),true);
       } finally {submit.disabled = false;}
     });
@@ -294,7 +302,7 @@ export class StreamGuardApp {
     const snapshot = object(await this.api.request('GET', `/channels/${channel}/dashboard`,undefined,!render));
     if (epoch !== this.epoch || channel !== this.channel || !adminScreens.includes(this.screen)) return;
     this.dashboard = snapshot;
-    if (!render && this.screen !== 'moderation') {this.updateStats(); return;}
+    if (!render && this.screen !== 'moderation') {this.updateStats(); for (const banner of this.content.querySelectorAll('.ai-provider-status')) banner.replaceWith(this.aiStatus()); return;}
     this.content.replaceChildren(); this.chatList = null;
     switch (this.screen) {
       case 'settings': this.settings(); break;
@@ -771,7 +779,7 @@ export class StreamGuardApp {
     this.content.append(button(t('uiAccountText201'), 'button subtle', () => {this.channel = ''; this.route('studio');}), button(t('uiAccountText202'), 'button danger', async () => {
       if (this.broadcasting) {await media.finalizeRecording(); await this.api.request('POST', `/streams/${this.stream}/end`, {});}
       if (this.locationChannel) await this.api.request('PUT',`/channels/${this.locationChannel}/location`,{shared:false});
-      this.stopLocation(); await this.api.request('POST', '/auth/logout', {}); media.stop(); this.broadcasting = false; this.api.setToken(''); this.user = null; this.channel = ''; this.dashboard = {}; this.configureMedia(); this.route('login');
+      this.stopLocation(); await this.api.request('POST', '/auth/logout', {}); this.geminiChat.clear(); media.stop(); this.broadcasting = false; this.api.setToken(''); this.user = null; this.channel = ''; this.dashboard = {}; this.configureMedia(); this.route('login');
     }));
     const history=panel('profile-history'); this.content.append(history);
     const streams=rows(await this.api.request('GET','/users/me/streams')); if (!history.isConnected) return;
@@ -797,9 +805,13 @@ export class StreamGuardApp {
     modal.form.append(video,status,actions); modal.element.addEventListener('close',()=>{video.pause();video.removeAttribute('src');video.load();}); load();
   }
   private aiStatus(): HTMLDivElement {
-    const configured = flag(this.config, 'aiConfigured');
-    const localModel = text(this.config, 'aiMode') === 'OLLAMA';
-    return html(`<div class="info-banner${configured ? ' success-banner' : ''}">${icon('spark')}<div><strong>${configured ? (localModel ? t('localAiConfigured') : t('uiAiStatusText203')) : t('uiAiStatusText204')}</strong><p>${configured ? (localModel ? t('localAiAvailability') : t('uiAiStatusText205')) : t('uiAiStatusText206')}</p></div></div>`);
+    const capabilities = object(this.dashboard.assistantCapabilities);
+    const configured = typeof capabilities.configured === 'boolean' ? flag(capabilities, 'configured') : flag(this.config, 'aiConfigured');
+    const provider = text(capabilities, 'provider') || text(this.config, 'aiMode');
+    const model = text(capabilities, 'model') || text(this.config, 'aiModel');
+    const localModel = provider === 'OLLAMA';
+    const label = configured ? `${t('aiProviderConfigured')}: ${providerName(provider)}` : t('uiAiStatusText204');
+    return html(`<div class="info-banner ai-provider-status${configured ? ' success-banner' : ''}">${icon('spark')}<div><strong>${escape(label)}</strong>${configured ? `<p>${escape(t('aiModelLabel'))}: ${escape(model)}</p>` : ''}<p>${configured ? (localModel ? t('localAiAvailability') : t('uiAiStatusText205')) : t('uiAiStatusText206')}</p></div></div>`);
   }
 }
 function stringList(value: Json | undefined): string[] {return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : [];}

@@ -87,3 +87,7 @@ Se amplió la guía de TypeScript y se mejoró la navegación accesible: hay un 
 ## Secure workflows update (2026-10-09)
 
 See [secure workflows](docs/secure-workflows.md) for persistent encrypted HttpOnly sessions, local form limits, the light interface, optional location sharing and private profile recordings. The frontend API proxy must target the Render backend. Configure the private DATA_ENCRYPTION_KEY before deploying Flyway V7; retain the existing JWT_SECRET.
+
+## Gemini chat
+
+The sidebar now includes a Gemini conversation for every authenticated user, and the studio names the configured AI provider and model. See [the interface guide](docs/gemini-chat.md).
