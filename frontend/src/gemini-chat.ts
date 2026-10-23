@@ -104,6 +104,7 @@ export class GeminiChatView {
       if (generation !== this.generation) return;
       const answer = text(result, 'answer');
       if (!answer.trim() || answer.length > 6000 || text(result, 'provider') !== 'GEMINI') throw new Error(t('geminiChatFailed'));
+      this.model = text(result, 'model') || this.model;
       this.turns.push({role: 'assistant', text: answer});
       this.turns = this.turns.slice(-60);
     } catch (error) {
