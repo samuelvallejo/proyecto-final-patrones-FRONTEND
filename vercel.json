@@ -47,7 +47,7 @@
   "rewrites": [
     {
       "source": "/api/:path*",
-      "destination": "https://streamguard-backend-v2.onrender.com/api/:path*"
+      "destination": "https://streamguard-backend-production.up.railway.app/api/:path*"
     }
   ]
 }
