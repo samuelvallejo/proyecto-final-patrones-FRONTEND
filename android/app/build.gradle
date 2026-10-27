@@ -9,7 +9,7 @@ android {
         versionCode 1
         versionName '1.0.0'
         buildConfigField 'String', 'FRONTEND', '"https://streamguard-frontend.vercel.app"'
-        buildConfigField 'String', 'BACKEND', '"https://streamguard-backend-v2.onrender.com"'
+        buildConfigField 'String', 'BACKEND', '"https://streamguard-backend-production.up.railway.app"'
     }
     buildFeatures { buildConfig true }
     compileOptions { coreLibraryDesugaringEnabled true; sourceCompatibility JavaVersion.VERSION_17; targetCompatibility JavaVersion.VERSION_17 }
