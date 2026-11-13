@@ -328,6 +328,7 @@
   "operationSuccess": "El proceso se ejecutó correctamente.",
   "authSuccess": "El proceso se ejecutó correctamente.",
   "authFailed": "No se pudo completar el acceso. Revisa el formulario e inténtalo nuevamente.",
+  "backendUnavailable": "El servidor de StreamGuard no está disponible en este momento. Inténtalo de nuevo más tarde.",
   "authBrandEyebrow": "EN VIVO, CON CONFIANZA",
   "authBrandTitle": "Tu comunidad empieza aquí.",
   "authBrandDescription": "Comparte lo que te apasiona, conversa con tu comunidad y crea momentos que merecen guardarse.",

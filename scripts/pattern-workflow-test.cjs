@@ -3,6 +3,7 @@ const {chromium} = require('playwright');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
+const {sealedBody} = require('./sealed-auth.cjs');
 const ui = JSON.parse(fs.readFileSync(path.join(__dirname, '../frontend/public/locales/es.json'), 'utf8'));
 const base = process.env.TEST_WEB_URL || 'http://localhost:15173';
 if (!['localhost', '127.0.0.1'].includes(new URL(base).hostname)) throw new Error('Pattern workflow tests require a local test server');
@@ -20,7 +21,7 @@ if (!['localhost', '127.0.0.1'].includes(new URL(base).hostname)) throw new Erro
     return response.json();
   };
   try {
-    await api('POST', '/auth/register', {username: name, email: name + '@gmail.com', password: 'Synthetic-Test-Only-42!', aiConsent: true});
+    await api('POST', '/auth/register', await sealedBody(context.request, base, {username: name, email: name + '@gmail.com', password: 'Synthetic-Test-Only-42!', aiConsent: true}));
     const channel = await api('POST', '/channels', {name: 'Pattern workflow', slug: name, description: ''});
     const route = `/channels/${channel.id}`;
     const original = {level: 'BALANCED', autoHide: false, autoMute: true, muteSeconds: 90,

@@ -1,4 +1,4 @@
-import {ApiClient, apiOrigin} from './api';
+import {ApiClient, ApiRequestError, apiOrigin} from './api';
 import {object, rows, text, flag, mediaConfig, type Json, type Row, type LiveEvent} from './contracts';
 import {panel, html, escape, input, area, field, button, checkbox, select, toast, empty, dialog, icon, showLiveEnded} from './dom';
 import {t} from './i18n';
@@ -246,10 +246,13 @@ export class StreamGuardApp {
       submit.disabled = true;
       try {
         const body: Row = {email: email.value.trim(), password: password.value}; if (register) {body.username = username.value; body.aiConsent = consent.control.checked;}
-        await this.api.request('POST', register ? '/auth/register' : '/auth/login', body);
+        await this.api.sealed(register ? '/auth/register' : '/auth/login', body);
         password.value=''; this.user=object(await this.api.request('GET','/users/me')); await this.bootstrap();
         this.geminiChat.clear(); this.channel = ''; this.dashboard = {}; toast(t('authSuccess')); this.route('explore');
-      } catch {toast(t('authFailed'),true);
+      } catch (error) {
+        // Server outages, duplicates (409) and rate limits (429) are not form mistakes: show their own message.
+        const specific = error instanceof ApiRequestError && (error.unavailable || error.status === 409 || error.status === 429);
+        toast(specific ? error.message : t('authFailed'), true);
       } finally {submit.disabled = false;}
     });
     password.addEventListener('keydown', event => {if (event.key === 'Enter') submit.click();});

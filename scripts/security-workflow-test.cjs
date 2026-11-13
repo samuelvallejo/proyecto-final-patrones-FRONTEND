@@ -2,6 +2,7 @@
 const {chromium}=require('playwright');
 const assert=require('node:assert/strict');
 const fs=require('node:fs');
+const {sealedBody}=require('./sealed-auth.cjs');
 const ui=JSON.parse(fs.readFileSync('frontend/public/locales/es.json','utf8'));
 const base=process.env.TEST_WEB_URL||'http://localhost:5173';
 (async()=>{
@@ -10,6 +11,7 @@ const base=process.env.TEST_WEB_URL||'http://localhost:5173';
  try {
   const context=await browser.newContext({viewport:{width:1440,height:1000},permissions:['camera','microphone','geolocation'],geolocation:{latitude:1.23,longitude:-76.34}});
   page=await context.newPage();page.on('pageerror',error=>errors.push(error.message));
+  const authBodies=[];page.on('request',request=>{if(/\/auth\/(register|login)$/.test(request.url())) authBodies.push(request.postData()||'');});
   page.on('response',async response=>{if(/\/auth\/(register|login)$/.test(response.url())) responses.push({status:response.status(),body:await response.json()});});
   await page.goto(base);await page.getByRole('button',{name:ui.signIn,exact:true}).waitFor();
   assert.equal(await page.locator('.sidebar').count(),0);assert.equal(await page.locator('.auth-shell').count(),1);
@@ -23,6 +25,7 @@ const base=process.env.TEST_WEB_URL||'http://localhost:5173';
   await page.getByLabel(ui.uiAuthViewText46,{exact:true}).fill(email);
   await page.getByRole('button',{name:ui.createAccount,exact:true}).click();await page.locator('.sidebar').waitFor();
   assert.deepEqual(responses[0].body,{ok:true});
+  assert(authBodies.length>0&&authBodies.every(body=>!body.includes(password)&&!body.includes(email)&&/"token":"[A-Z2-9]{5}-[A-Z2-9]{5}-[A-Z2-9]{5}"/.test(body)));
   const cookie=(await context.cookies()).find(value=>value.name==='streamguard_session');assert(cookie?.httpOnly);assert(cookie.expires>Date.now()/1000+600000);
   assert.equal(await page.evaluate(()=>sessionStorage.getItem('streamguard.token')),null);assert.equal(await page.evaluate(()=>localStorage.getItem('streamguard.token')),null);assert(!await page.evaluate(()=>document.cookie.includes('streamguard_session')));
   results.push('Password visibility, provider validation and encrypted HttpOnly session work');
@@ -36,7 +39,7 @@ const base=process.env.TEST_WEB_URL||'http://localhost:5173';
   await page.waitForFunction(()=>document.querySelector('#live-video')?.videoWidth>0);
   const viewerContext=await browser.newContext({viewport:{width:1200,height:850}});
   const viewerName='viewer_'+Date.now().toString(36);
-  const viewerRegistration=await viewerContext.request.post(base+'/api/auth/register',{data:{username:viewerName,email:viewerName+'@gmail.com',password:'TestPassword123!',aiConsent:true}});
+  const viewerRegistration=await viewerContext.request.post(base+'/api/auth/register',{data:await sealedBody(viewerContext.request,base,{username:viewerName,email:viewerName+'@gmail.com',password:'TestPassword123!',aiConsent:true})});
   assert.equal(viewerRegistration.status(),200);
   const viewer=await viewerContext.newPage();viewer.on('pageerror',error=>errors.push(error.message));await viewer.goto(base);await viewer.locator('.stream-card').filter({hasText:'Synthetic live review'}).getByRole('button',{name:ui.uiExploreText32,exact:true}).click();
   await viewer.waitForFunction(()=>document.querySelector('#live-video')?.videoWidth>0,{},{timeout:30000});results.push('A second authenticated browser receives WebRTC video with a one-use connection ticket');
