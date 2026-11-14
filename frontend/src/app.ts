@@ -19,6 +19,15 @@ import {browserCaptureEnvironment, mobileCaptureClient} from './capture';
 type Screen = 'explore' | 'studio' | 'login' | 'register' | 'watch' | 'public-clips' | 'account' | 'moderation' | 'clips' | 'assistant' | 'gemini-chat' | 'settings';
 const adminScreens: Screen[] = ['studio', 'moderation', 'clips', 'assistant', 'settings'];
 
+function eventWhen(value: string): string {
+  const date = new Date(value); if (Number.isNaN(date.getTime())) return '';
+  const time = date.toLocaleTimeString('es-CO', {hour: 'numeric', minute: '2-digit'});
+  if (date.getTime() <= Date.now()) return t('eventLive');
+  const day = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime(), diff = Math.round((day(date) - day(new Date())) / 86400000);
+  if (diff === 0) return `${t('today')} · ${time}`;
+  if (diff === 1) return `${t('tomorrow')} · ${time}`;
+  return `${date.toLocaleDateString('es-CO', {weekday: 'short', day: 'numeric', month: 'short'})} · ${time}`;
+}
 function categoryIcon(slug: string): string {
   return ({'': 'grid', conversacion: 'chat', videojuegos: 'gamepad', tecnologia: 'chip', musica: 'music', arte: 'palette', educacion: 'book'} as Record<string, string>)[slug] ?? 'spark';
 }
@@ -31,6 +40,7 @@ export class StreamGuardApp {
   private config: Row = {};
   private dashboard: Row = {};
   private categories: Row[] = [];
+  private following: Row[] = [];
   private screen: Screen = 'login';
   private locationWatch: number | null = null;
   private locationChannel = '';
@@ -82,6 +92,10 @@ export class StreamGuardApp {
   private async bootstrap(): Promise<void> {
     const [config,categories] = await Promise.all([this.api.request('GET','/config'),this.api.request('GET','/categories')]);
     this.config=object(config); this.categories=rows(categories); this.configureMedia();
+    await this.loadFollowing();
+  }
+  private async loadFollowing(): Promise<void> {
+    try {this.following = rows(await this.api.request('GET', '/discover/following', undefined, true));} catch {this.following = [];}
   }
   private configureMedia(): void {media.configure(apiOrigin, this.api.token, mediaConfig(this.config));}
   private launch(action: () => Promise<void>): void {void action().catch(error => toast(error instanceof Error ? error.message : t('uiOnErrorText04'), true));}
@@ -104,7 +118,15 @@ export class StreamGuardApp {
       const chip = button(label, `side-category${this.category === slug ? ' selected' : ''}`, () => {this.category = slug; this.route('explore');});
       chip.innerHTML = icon(categoryIcon(slug)) + `<span>${escape(label)}</span>`; chip.setAttribute('aria-label', label); sideCategories.append(chip);
     }
-    navigation.append(html(t('sidebarCategories')), sideCategories);
+    const followed = panel('side-following');
+    if (!this.following.length) followed.append(html(`<p class="side-empty">${escape(t('sidebarFollowingEmpty'))}</p>`));
+    for (const channel of this.following.slice(0, 6)) {
+      const live = Boolean(text(channel, 'stream_id')), name = text(channel, 'name');
+      const row = button(name, `side-channel${live ? ' live' : ''}`, () => live ? this.openStream({id: text(channel, 'stream_id'), title: text(channel, 'title')}) : toast(t('channelOffline')));
+      row.innerHTML = `<span class="avatar-chip small">${escape(name.slice(0, 1).toUpperCase())}</span><span class="side-channel-name"><strong>${escape(name)}</strong><small>${escape(live ? t('liveShort') : t('offline'))}</small></span>${live ? `<span class="side-channel-count">${escape(text(channel, 'viewers') || '0')}</span>` : ''}`;
+      row.setAttribute('aria-label', name); followed.append(row);
+    }
+    navigation.append(html(t('sidebarFollowing')), followed, html(t('sidebarCategories')), sideCategories);
     side.append(navigation, html(t('uiShellText14')));
     const main = panel('main-shell'), header = panel('topbar');
     const menu = button('☰', 'menu-button', () => {
@@ -189,45 +211,62 @@ export class StreamGuardApp {
     this.content.append(html(`<div class="page-heading"><p class="eyebrow">${escape(eyebrow)}</p><h1>${escape(heading)}</h1><p class="muted">${escape(detail)}</p></div>`));
   }
   private categoryOptions(): Array<[string, string]> {
-    return [[t('homeAllCategories'), ''], ...this.categories.map((row): [string, string] => [text(row, 'name'), text(row, 'slug')])];
+    return [[t('allLabel'), ''], ...this.categories.map((row): [string, string] => [text(row, 'name'), text(row, 'slug')])];
   }
-  /** Home dashboard: featured live stream, shortcuts, live grid, categories and an activity rail. */
+  /** Home dashboard modelled on the reference design, filled only with real platform data. */
   private async explore(): Promise<void> {
     const layout = panel('home-layout'), main = panel('home-main'), rail = panel('home-rail');
-    const top = panel('home-top'), hero = panel('home-hero'), quick = panel('quick-card');
+    const top = panel('home-top'), hero = panel('home-hero'), events = panel('quick-card events-card');
     hero.append(html(t('homeHeroDefault')));
     const heroActions = panel('hero-actions'); heroActions.append(button(t('openStudio'), 'button primary', () => this.route('studio')), button(t('uiExploreText23'), 'button glass', () => this.route('public-clips'))); hero.append(heroActions);
-    quick.append(html(t('homeQuickTitle')));
-    const shortcuts: Array<[Screen, string, string, string]> = [['studio', t('myStudio'), t('homeQuickStudioDetail'), 'video'], ['clips', t('uiShellText11'), t('homeQuickClipsDetail'), 'play'],
-      ['assistant', t('uiShellText12'), t('homeQuickAssistantDetail'), 'spark'], ['gemini-chat', t('geminiChatNavigation'), t('homeQuickGeminiDetail'), 'chat']];
-    for (const [screen, label, detail, glyph] of shortcuts) {
-      const row = button(label, 'quick-row', () => this.route(screen));
-      row.innerHTML = `<span class="quick-icon">${icon(glyph)}</span><span><strong>${escape(label)}</strong><small>${escape(detail)}</small></span>`; quick.append(row);
-    }
-    top.append(hero, quick);
-    const live = panel('home-card'), liveTitle = panel('home-card-title');
-    liveTitle.append(html(`<h2>${icon('spark')}${escape(t('homeLiveTitle'))}</h2>`), html(`<span class="live-pill"><span class="status-dot"></span>${t('liveNow')}</span>`));
-    const cards = panel('stream-grid'); cards.append(empty(t('uiExploreText26'), t('uiExploreText27'))); live.append(liveTitle, cards);
+    const eventsTitle = panel('events-title'), eventList = panel('event-list');
+    const addEvent = button(t('homeEventsAdd'), 'events-add', () => this.scheduleEvent(() => this.loadEvents(eventList)));
+    addEvent.innerHTML = icon('plus'); addEvent.setAttribute('aria-label', t('homeEventsAdd'));
+    eventsTitle.append(html(`<h2>${escape(t('homeEventsTitle'))}</h2>`), addEvent);
+    eventList.append(html(`<p class="rail-empty light">${escape(t('processing'))}</p>`)); events.append(eventsTitle, eventList);
+    top.append(hero, events);
+    const recommended = panel('home-card'), recTitle = panel('home-card-title'), track = panel('stream-track');
+    const scroll = (direction: number) => track.scrollBy({left: direction * Math.max(240, track.clientWidth * 0.8), behavior: 'smooth'});
+    const arrows = panel('carousel-arrows'), prev = button(t('carouselPrev'), 'carousel-arrow', () => scroll(-1)), next = button(t('carouselNext'), 'carousel-arrow', () => scroll(1));
+    prev.innerHTML = icon('chevron-left'); next.innerHTML = icon('chevron-right'); prev.setAttribute('aria-label', t('carouselPrev')); next.setAttribute('aria-label', t('carouselNext')); arrows.append(prev, next);
+    recTitle.append(html(`<h2>${icon('spark')}${escape(t('homeRecommendedTitle'))}</h2>`), arrows);
+    track.append(empty(t('uiExploreText26'), t('uiExploreText27'))); recommended.append(recTitle, track);
     const bottom = panel('home-bottom'), promo = panel('promo-card'), popular = panel('home-card'), tiles = panel('category-tiles');
-    promo.append(html(icon('video') + t('homePromo')), button(t('openStudio'), 'button', () => this.route('studio')));
-    this.categoryOptions().forEach(([label, slug], index) => {
-      const tile = button(label, `category-tile tone-${index % 7}${this.category === slug ? ' selected' : ''}`, () => {this.category = slug; this.route('explore');});
-      tile.innerHTML = icon(categoryIcon(slug)) + `<span>${escape(label)}</span>`; tile.setAttribute('aria-label', label); tiles.append(tile);
-    });
-    popular.append(html(`<div class="home-card-title"><h2>${icon('grid')}${escape(t('homeCategoriesTitle'))}</h2></div>`), tiles); bottom.append(promo, popular);
-    main.append(top, live, bottom, html("<div class='feature-strip'><article>" + icon('shield') + t('uiExploreText35') + icon('play') + t('uiExploreText36') + icon('video') + t('uiExploreText37')));
+    promo.append(html(icon('crown') + t('homePromo')), button(t('openStudio'), 'button', () => this.route('studio')));
+    const popularTitle = panel('home-card-title');
+    const allCategories = button(t('homeAllCategories'), 'text-button', () => {this.category = ''; this.route('explore');});
+    allCategories.innerHTML = `${escape(t('homeAllCategories'))} ${icon('arrow')}`;
+    popularTitle.append(html(`<h2>${icon('flame')}${escape(t('homeCategoriesTitle'))}</h2>`), allCategories);
+    const drawTiles = (list: Row[]) => {
+      tiles.replaceChildren();
+      list.forEach((category, index) => {
+        const slug = text(category, 'slug'), label = text(category, 'name'), count = Number(category.viewers ?? 0), live = Number(category.live_streams ?? 0);
+        const tile = button(label, `category-tile${this.category === slug ? ' selected' : ''}`, () => {this.category = slug; this.route('explore');});
+        tile.innerHTML = `<span class="category-art tone-${index % 7}">${icon(categoryIcon(slug))}</span><strong>${escape(label)}</strong><small><i></i>${escape(live ? `${live} ${t('homeChannelViewers')} · ${count} ${t('viewersShort')}` : t('categoryNoLive'))}</small>`;
+        tile.setAttribute('aria-label', label); tiles.append(tile);
+      });
+    };
+    drawTiles(this.categories);
+    popular.append(popularTitle, tiles); bottom.append(promo, popular);
+    main.append(top, recommended, bottom);
     const notices = panel('home-card'), noticeList = panel('rail-list'), noticeTitle = panel('home-card-title');
     noticeTitle.append(html(`<h2>${icon('bell')}${escape(t('homeNoticesTitle'))}</h2>`), button(t('homeNoticesAll'), 'text-button', () => this.notifications()));
     noticeList.append(html(`<p class="rail-empty">${escape(t('processing'))}</p>`)); notices.append(noticeTitle, noticeList);
-    const channels = panel('home-card'), channelList = panel('rail-list');
-    channelList.append(html(`<p class="rail-empty">${escape(t('processing'))}</p>`));
-    channels.append(html(`<div class="home-card-title"><h2>${icon('video')}${escape(t('homeChannelsTitle'))}</h2></div>`), channelList);
+    const featured = panel('home-card'), featuredList = panel('rail-list');
+    featuredList.append(html(`<p class="rail-empty">${escape(t('processing'))}</p>`));
+    featured.append(html(`<div class="home-card-title"><h2>${icon('crown')}${escape(t('homeFeaturedTitle'))}</h2></div>`), featuredList);
     const clips = button(t('homeClipsAction'), 'clips-card', () => this.route('public-clips'));
-    clips.innerHTML = `<span>${icon('play')}</span><span><small>${escape(t('homeClipsEyebrow'))}</small><strong>${escape(t('homeClipsAction'))}</strong></span>`;
-    rail.append(notices, channels, clips); layout.append(main, rail); this.content.append(layout);
+    clips.innerHTML = `<span>${icon('play')}</span><span><small>${escape(t('homeClipsEyebrow'))}</small><strong>${escape(t('homeClipsAction'))}</strong></span><span class="clips-wave" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i></span>`;
+    rail.append(notices, featured, clips); layout.append(main, rail); this.content.append(layout);
+    this.launch(() => this.loadEvents(eventList));
+    this.launch(async () => {
+      const list = rows(await this.api.request('GET', '/discover/categories', undefined, true));
+      if (tiles.isConnected && list.length) drawTiles(list);
+    });
+    this.launch(() => this.loadFeatured(featuredList));
     this.launch(async () => {
       // Listing notices here does not mark them as read; opening the full list does.
-      const items = rows(await this.api.request('GET', '/notifications', undefined, true)).slice(0, 4);
+      const items = rows(await this.api.request('GET', '/notifications', undefined, true)).slice(0, 3);
       if (!noticeList.isConnected) return; noticeList.replaceChildren();
       if (!items.length) noticeList.append(html(`<p class="rail-empty">${escape(t('homeNoticesEmpty'))}</p>`));
       for (const item of items) {
@@ -237,30 +276,81 @@ export class StreamGuardApp {
     });
     try {
       const streams = rows(await this.api.request('GET', `/explore?q=${encodeURIComponent(this.search)}&category=${encodeURIComponent(this.category)}`));
-      if (!cards.isConnected) return; cards.replaceChildren(); channelList.replaceChildren();
-      if (!streams.length) {
-        cards.append(empty(t('uiExploreText28'), this.search ? t('uiExploreText30') : t('uiExploreText29')));
-        channelList.append(html(`<p class="rail-empty">${escape(t('homeChannelsEmpty'))}</p>`));
-      }
-      const featured = streams[0];
-      if (featured) {
-        const channel = text(featured, 'channel_name'), category = text(featured, 'category');
-        hero.replaceChildren(html(`<span class="hero-badge live"><span class="status-dot"></span>${escape(t('homeFeaturedLive'))}</span><span class="hero-viewers">${icon('eye')}${escape(text(featured, 'viewers') || '0')} ${escape(t('homeViewersShort'))}</span>`
-          + `<div class="hero-channel"><span class="avatar-chip">${escape(channel.slice(0, 1).toUpperCase())}</span><span>${escape(channel)}<small>${escape(t('homeFeaturedLive'))}</small></span></div><h1>${escape(text(featured, 'title'))}</h1>`
+      if (!track.isConnected) return; track.replaceChildren();
+      arrows.hidden = streams.length < 2;
+      if (!streams.length) track.append(empty(t('uiExploreText28'), this.search ? t('uiExploreText30') : t('uiExploreText29')));
+      let featuredIndex = 0;
+      const showFeatured = () => {
+        const stream = streams[featuredIndex]; if (!stream) return;
+        const channel = text(stream, 'channel_name'), category = text(stream, 'category');
+        hero.replaceChildren(html(`<span class="hero-badge live">${escape(t('homeFeaturedLive'))}</span><span class="hero-viewers">${icon('eye')}${escape(text(stream, 'viewers') || '0')}</span>`
+          + `<div class="hero-channel"><span class="avatar-chip">${escape(channel.slice(0, 1).toUpperCase())}</span><span>${escape(channel)} <span class="verified">\u2713</span><small>${escape(t('homeFeaturedLive'))}</small></span></div><h1>${escape(text(stream, 'title'))}</h1>`
           + (category ? `<div class="hero-tags"><span>${escape(category)}</span></div>` : '')));
-        const actions = panel('hero-actions'); actions.append(button(t('homeWatchLive'), 'button primary', () => this.openStream(featured))); hero.append(actions);
+        const actions = panel('hero-actions'), watch = button(t('homeWatchLive'), 'button primary watch-live', () => this.openStream(stream));
+        watch.innerHTML = `${escape(t('homeWatchLive'))}<span class="watch-arrow">${icon('arrow')}</span>`; actions.append(watch); hero.append(actions);
+        if (streams.length > 1) {
+          const nextHero = button(t('homeNextLive'), 'hero-next', () => {featuredIndex = (featuredIndex + 1) % streams.length; showFeatured();});
+          nextHero.innerHTML = icon('chevron-right'); nextHero.setAttribute('aria-label', t('homeNextLive')); hero.append(nextHero);
+        }
+      };
+      showFeatured();
+      streams.forEach((stream, index) => {
+        const channel = text(stream, 'channel_name'), category = text(stream, 'category'), card = panel('rec-card');
+        const cover = button(text(stream, 'title'), `rec-cover tone-${index % 7}`, () => this.openStream(stream));
+        cover.innerHTML = `<span class="live-tag">${escape(t('homeFeaturedLive'))}</span>${icon('video')}<span class="viewer-tag">${icon('eye')}${escape(text(stream, 'viewers') || '0')}</span>`;
+        cover.setAttribute('aria-label', `${t('uiExploreText32')} ${text(stream, 'title')}`);
+        card.append(cover, html(`<div class="rec-body"><span class="avatar-chip small">${escape(channel.slice(0, 1).toUpperCase())}</span><div><strong>${escape(channel)} <span class="verified">\u2713</span></strong><p>${escape(text(stream, 'title'))}</p></div></div><div class="rec-tags">${category ? `<span>${escape(category)}</span>` : ''}<span>${escape(t('languageSpanish'))}</span></div>`));
+        track.append(card);
+      });
+    } catch (error) {if (track.isConnected) {track.replaceChildren(empty(t('uiExploreText33'), t('uiExploreText34'))); throw error;}}
+  }
+  private async loadEvents(list: HTMLElement): Promise<void> {
+    const items = rows(await this.api.request('GET', '/events/upcoming', undefined, true));
+    if (!list.isConnected) return; list.replaceChildren();
+    if (!items.length) list.append(html(`<p class="rail-empty light">${escape(t('homeEventsEmpty'))}</p>`));
+    items.slice(0, 4).forEach((item, index) => {
+      const row = panel('event-row');
+      row.append(html(`<span class="event-icon tone-${index % 7}">${icon(categoryIcon(text(item, 'category_slug')))}</span><span class="event-copy"><strong>${escape(text(item, 'title'))}</strong><small>${escape(text(item, 'channel_name'))} · ${escape(eventWhen(text(item, 'starts_at')))}</small></span>`));
+      if (item.mine === true) {
+        const remove = button(t('eventDelete'), 'event-remove', async () => {
+          await this.api.request('DELETE', `/events/${encodeURIComponent(text(item, 'id'))}`); toast(t('eventDeleted')); await this.loadEvents(list);
+        });
+        remove.innerHTML = icon('close'); remove.setAttribute('aria-label', `${t('eventDelete')}: ${text(item, 'title')}`); row.append(remove);
       }
-      for (const stream of streams) {
-        const card = panel('stream-card');
-        card.append(html(t('uiExploreText31') + icon('video') + `<span class='viewer-tag'>${escape(text(stream, 'viewers'))}` + t('streamViewerCountSuffix') + `${escape(text(stream, 'category'))}</span><h3>${escape(text(stream, 'title'))}</h3><p>${escape(text(stream, 'channel_name'))} <span class='verified'>\u2713</span></p></div>`));
-        card.append(button(t('uiExploreText32'), 'button subtle full', () => this.openStream(stream))); cards.append(card);
+      list.append(row);
+    });
+  }
+  private scheduleEvent(done: () => Promise<void>): void {
+    const modal = dialog(t('eventDialogTitle'));
+    const title = input(t('eventFieldTitlePlaceholder')); title.maxLength = 140; title.required = true;
+    const when = input(''); when.type = 'datetime-local'; when.required = true;
+    const pad = (n: number) => String(n).padStart(2, '0'), soon = new Date(Date.now() + 3600000);
+    when.value = `${soon.getFullYear()}-${pad(soon.getMonth() + 1)}-${pad(soon.getDate())}T${pad(soon.getHours())}:00`; when.min = when.value.slice(0, 10) + 'T00:00';
+    const category = select([[t('eventNoCategory'), ''], ...this.categories.map((row): [string, string] => [text(row, 'name'), text(row, 'id')])]);
+    const save = button(t('eventSave'), 'button primary', async () => {
+      const start = new Date(when.value);
+      if (!title.value.trim() || Number.isNaN(start.getTime())) {toast(t('eventRequired'), true); return;}
+      const body: Row = {title: title.value.trim(), startsAt: start.toISOString()}; if (category.value) body.categoryId = category.value;
+      await this.api.request('POST', '/events', body); modal.close(); toast(t('eventSaved')); await done();
+    });
+    modal.form.append(field(t('eventFieldTitle'), title), field(t('eventFieldWhen'), when), field(t('eventFieldCategory'), category), save, button(t('eventCancel'), 'button subtle', modal.close));
+  }
+  private async loadFeatured(list: HTMLElement): Promise<void> {
+    const channels = rows(await this.api.request('GET', '/discover/featured', undefined, true));
+    if (!list.isConnected) return; list.replaceChildren();
+    if (!channels.length) list.append(html(`<p class="rail-empty">${escape(t('featuredEmpty'))}</p>`));
+    for (const channel of channels) {
+      const name = text(channel, 'name'), live = Boolean(text(channel, 'stream_id')), item = panel(`channel-item${live ? '' : ' offline'}`);
+      item.append(html(`<span class="avatar-chip">${escape(name.slice(0, 1).toUpperCase())}</span>`), html(`<strong>${escape(name)}</strong><small>${escape(live ? `${text(channel, 'viewers') || '0'} ${t('homeChannelViewers')}` : t('offline'))}</small>`));
+      if (channel.mine !== true) {
+        const following = channel.following === true, id = encodeURIComponent(text(channel, 'channel_id'));
+        item.append(button(following ? t('followingLabel') : t('followLabel'), `button ${following ? 'subtle following' : 'follow'}`, async () => {
+          await this.api.request(following ? 'DELETE' : 'POST', `/channels/${id}/follow`, following ? undefined : {});
+          toast(following ? t('unfollowed') : t('followed')); await this.loadFollowing(); this.route('explore');
+        }));
       }
-      for (const stream of streams.slice(0, 5)) {
-        const channel = text(stream, 'channel_name'), item = panel('channel-item');
-        item.append(html(`<span class="avatar-chip">${escape(channel.slice(0, 1).toUpperCase())}</span>`), html(`<strong>${escape(channel)}</strong><small>${escape(text(stream, 'viewers') || '0')} ${escape(t('homeChannelViewers'))}</small>`), button(t('homeChannelWatch'), 'button subtle', () => this.openStream(stream)));
-        channelList.append(item);
-      }
-    } catch (error) {if (cards.isConnected) {cards.replaceChildren(empty(t('uiExploreText33'), t('uiExploreText34'))); channelList.replaceChildren(); throw error;}}
+      list.append(item);
+    }
   }
   private authView(register: boolean): void {
     this.title(t('welcomeEyebrow'), register ? t('uiAuthViewText38') : t('uiAuthViewText39'), register ? t('uiAuthViewText40') : t('uiAuthViewText41'));
