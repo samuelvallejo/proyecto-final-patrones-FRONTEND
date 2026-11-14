@@ -10,6 +10,7 @@ import {beginActivity} from './activity';
 import {ModerationPolicyDraft} from './moderation-policy';
 import './moderation-presets.css';
 import './light.css';
+import './blue.css';
 import {GeminiChatView} from './gemini-chat';
 import {viewerCounter, viewerNumber, updateViewerCounters} from './viewer-count';
 import {StudioInputs} from './studio-inputs';
@@ -18,6 +19,9 @@ import {browserCaptureEnvironment, mobileCaptureClient} from './capture';
 type Screen = 'explore' | 'studio' | 'login' | 'register' | 'watch' | 'public-clips' | 'account' | 'moderation' | 'clips' | 'assistant' | 'gemini-chat' | 'settings';
 const adminScreens: Screen[] = ['studio', 'moderation', 'clips', 'assistant', 'settings'];
 
+function categoryIcon(slug: string): string {
+  return ({'': 'grid', conversacion: 'chat', videojuegos: 'gamepad', tecnologia: 'chip', musica: 'music', arte: 'palette', educacion: 'book'} as Record<string, string>)[slug] ?? 'spark';
+}
 /** Responsive UI, authentication and workflows; server permissions remain authoritative. */
 export class StreamGuardApp {
   private readonly api = new ApiClient();
@@ -90,11 +94,17 @@ export class StreamGuardApp {
     const skipLink = document.createElement('a'); skipLink.className = 'skip-link'; skipLink.href = '#page-content'; skipLink.textContent = t('skipToMainContent');
     const side = panel('sidebar'); side.append(html(t('uiShellText05') + icon('shield') + t('uiShellText06')));
     side.querySelector('.brand')?.addEventListener('click', event => {event.preventDefault(); this.route('explore');});
-    const first = panel('nav-list'); first.append(this.navButton('explore', t('uiShellText08'), 'grid'), this.navButton('studio', t('myStudio'), 'video'));
+    const first = panel('nav-list'); first.append(this.navButton('explore', t('uiShellText08'), 'home'), this.navButton('studio', t('myStudio'), 'video'));
     const second = panel('nav-list'); second.append(this.navButton('moderation', t('uiShellText10'), 'shield'), this.navButton('clips', t('uiShellText11'), 'play'), this.navButton('assistant', t('uiShellText12'), 'spark'), this.navButton('settings', t('uiShellText13'), 'settings'));
     const navigation = document.createElement('nav'); navigation.id = 'main-navigation'; navigation.setAttribute('aria-label', t('mainNavigationLabel'));
     second.insertBefore(this.navButton('gemini-chat', t('geminiChatNavigation'), 'spark'), second.lastElementChild);
     navigation.append(html(t('uiShellText07')), first, html(t('uiShellText09')), second);
+    const sideCategories = panel('side-categories');
+    for (const [label, slug] of this.categoryOptions()) {
+      const chip = button(label, `side-category${this.category === slug ? ' selected' : ''}`, () => {this.category = slug; this.route('explore');});
+      chip.innerHTML = icon(categoryIcon(slug)) + `<span>${escape(label)}</span>`; chip.setAttribute('aria-label', label); sideCategories.append(chip);
+    }
+    navigation.append(html(t('sidebarCategories')), sideCategories);
     side.append(navigation, html(t('uiShellText14')));
     const main = panel('main-shell'), header = panel('topbar');
     const menu = button('☰', 'menu-button', () => {
@@ -110,7 +120,8 @@ export class StreamGuardApp {
     if (!this.user) account.append(button(t('uiShellText18'), 'button primary small', () => this.route('login')));
     else {
       const badge = button(text(this.user, 'username').slice(0, 1).toUpperCase(), 'avatar', () => this.route('account')); badge.setAttribute('aria-label', t('myAccount'));
-      account.append(button(t('uiShellText19'), 'button icon-button', () => this.notifications()), badge);
+      const bell = button(t('uiShellText19'), 'button icon-button', () => this.notifications()); bell.innerHTML = icon('bell'); bell.setAttribute('aria-label', t('uiShellText19'));
+      account.append(bell, badge);
     }
     header.append(menu, find, account); this.content = panel('page-content'); this.content.id = 'page-content'; this.content.setAttribute('role', 'main'); this.content.tabIndex = -1;
     main.append(header, this.content); this.root.append(skipLink, side, main);
@@ -177,27 +188,79 @@ export class StreamGuardApp {
   private title(eyebrow: string, heading: string, detail: string): void {
     this.content.append(html(`<div class="page-heading"><p class="eyebrow">${escape(eyebrow)}</p><h1>${escape(heading)}</h1><p class="muted">${escape(detail)}</p></div>`));
   }
+  private categoryOptions(): Array<[string, string]> {
+    return [[t('homeAllCategories'), ''], ...this.categories.map((row): [string, string] => [text(row, 'name'), text(row, 'slug')])];
+  }
+  /** Home dashboard: featured live stream, shortcuts, live grid, categories and an activity rail. */
   private async explore(): Promise<void> {
-    const hero = panel('hero'); hero.append(html(t('uiExploreText21') + icon('shield') + "</div><div class='floating-label label-top'>" + icon('spark') + t('uiExploreText22')));
-    const actions = panel('hero-actions'); actions.append(button(t('openStudio'), 'button primary', () => this.route('studio')), button(t('uiExploreText23'), 'button subtle', () => this.route('public-clips'))); hero.append(actions);
-    const filters = panel('category-row');
-    for (const [label, slug] of [[t('uiExploreText24'), ''], ...this.categories.map(row => [text(row, 'name'), text(row, 'slug')])]) {
-      if (label === undefined || slug === undefined) continue;
-      filters.append(button(label, `category-chip${this.category === slug ? ' selected' : ''}`, () => {this.category = slug; this.route('explore');}));
+    const layout = panel('home-layout'), main = panel('home-main'), rail = panel('home-rail');
+    const top = panel('home-top'), hero = panel('home-hero'), quick = panel('quick-card');
+    hero.append(html(t('homeHeroDefault')));
+    const heroActions = panel('hero-actions'); heroActions.append(button(t('openStudio'), 'button primary', () => this.route('studio')), button(t('uiExploreText23'), 'button glass', () => this.route('public-clips'))); hero.append(heroActions);
+    quick.append(html(t('homeQuickTitle')));
+    const shortcuts: Array<[Screen, string, string, string]> = [['studio', t('myStudio'), t('homeQuickStudioDetail'), 'video'], ['clips', t('uiShellText11'), t('homeQuickClipsDetail'), 'play'],
+      ['assistant', t('uiShellText12'), t('homeQuickAssistantDetail'), 'spark'], ['gemini-chat', t('geminiChatNavigation'), t('homeQuickGeminiDetail'), 'chat']];
+    for (const [screen, label, detail, glyph] of shortcuts) {
+      const row = button(label, 'quick-row', () => this.route(screen));
+      row.innerHTML = `<span class="quick-icon">${icon(glyph)}</span><span><strong>${escape(label)}</strong><small>${escape(detail)}</small></span>`; quick.append(row);
     }
-    const section = panel('section-title'); section.append(html(t('uiExploreText25')), html(`<span class="live-pill"><span class="status-dot"></span>${t('liveNow')}</span>`));
-    const cards = panel('stream-grid'); cards.append(empty(t('uiExploreText26'), t('uiExploreText27')));
-    this.content.append(hero, filters, section, cards, html("<div class='feature-strip'><article>" + icon('shield') + t('uiExploreText35') + icon('play') + t('uiExploreText36') + icon('video') + t('uiExploreText37')));
+    top.append(hero, quick);
+    const live = panel('home-card'), liveTitle = panel('home-card-title');
+    liveTitle.append(html(`<h2>${icon('spark')}${escape(t('homeLiveTitle'))}</h2>`), html(`<span class="live-pill"><span class="status-dot"></span>${t('liveNow')}</span>`));
+    const cards = panel('stream-grid'); cards.append(empty(t('uiExploreText26'), t('uiExploreText27'))); live.append(liveTitle, cards);
+    const bottom = panel('home-bottom'), promo = panel('promo-card'), popular = panel('home-card'), tiles = panel('category-tiles');
+    promo.append(html(icon('video') + t('homePromo')), button(t('openStudio'), 'button', () => this.route('studio')));
+    this.categoryOptions().forEach(([label, slug], index) => {
+      const tile = button(label, `category-tile tone-${index % 7}${this.category === slug ? ' selected' : ''}`, () => {this.category = slug; this.route('explore');});
+      tile.innerHTML = icon(categoryIcon(slug)) + `<span>${escape(label)}</span>`; tile.setAttribute('aria-label', label); tiles.append(tile);
+    });
+    popular.append(html(`<div class="home-card-title"><h2>${icon('grid')}${escape(t('homeCategoriesTitle'))}</h2></div>`), tiles); bottom.append(promo, popular);
+    main.append(top, live, bottom, html("<div class='feature-strip'><article>" + icon('shield') + t('uiExploreText35') + icon('play') + t('uiExploreText36') + icon('video') + t('uiExploreText37')));
+    const notices = panel('home-card'), noticeList = panel('rail-list'), noticeTitle = panel('home-card-title');
+    noticeTitle.append(html(`<h2>${icon('bell')}${escape(t('homeNoticesTitle'))}</h2>`), button(t('homeNoticesAll'), 'text-button', () => this.notifications()));
+    noticeList.append(html(`<p class="rail-empty">${escape(t('processing'))}</p>`)); notices.append(noticeTitle, noticeList);
+    const channels = panel('home-card'), channelList = panel('rail-list');
+    channelList.append(html(`<p class="rail-empty">${escape(t('processing'))}</p>`));
+    channels.append(html(`<div class="home-card-title"><h2>${icon('video')}${escape(t('homeChannelsTitle'))}</h2></div>`), channelList);
+    const clips = button(t('homeClipsAction'), 'clips-card', () => this.route('public-clips'));
+    clips.innerHTML = `<span>${icon('play')}</span><span><small>${escape(t('homeClipsEyebrow'))}</small><strong>${escape(t('homeClipsAction'))}</strong></span>`;
+    rail.append(notices, channels, clips); layout.append(main, rail); this.content.append(layout);
+    this.launch(async () => {
+      // Listing notices here does not mark them as read; opening the full list does.
+      const items = rows(await this.api.request('GET', '/notifications', undefined, true)).slice(0, 4);
+      if (!noticeList.isConnected) return; noticeList.replaceChildren();
+      if (!items.length) noticeList.append(html(`<p class="rail-empty">${escape(t('homeNoticesEmpty'))}</p>`));
+      for (const item of items) {
+        const created = new Date(text(item, 'created_at')), when = Number.isNaN(created.getTime()) ? '' : created.toLocaleString('es-CO', {dateStyle: 'medium', timeStyle: 'short'});
+        noticeList.append(html(`<div class="notice-item${item.read_at ? '' : ' unread'}"><span>${icon('bell')}</span><div><strong>${escape(text(item, 'title'))}</strong><p>${escape(text(item, 'body'))}</p><time>${escape(when)}</time></div></div>`));
+      }
+    });
     try {
       const streams = rows(await this.api.request('GET', `/explore?q=${encodeURIComponent(this.search)}&category=${encodeURIComponent(this.category)}`));
-      if (!cards.isConnected) return; cards.replaceChildren();
-      if (!streams.length) cards.append(empty(t('uiExploreText28'), this.search ? t('uiExploreText30') : t('uiExploreText29')));
+      if (!cards.isConnected) return; cards.replaceChildren(); channelList.replaceChildren();
+      if (!streams.length) {
+        cards.append(empty(t('uiExploreText28'), this.search ? t('uiExploreText30') : t('uiExploreText29')));
+        channelList.append(html(`<p class="rail-empty">${escape(t('homeChannelsEmpty'))}</p>`));
+      }
+      const featured = streams[0];
+      if (featured) {
+        const channel = text(featured, 'channel_name'), category = text(featured, 'category');
+        hero.replaceChildren(html(`<span class="hero-badge live"><span class="status-dot"></span>${escape(t('homeFeaturedLive'))}</span><span class="hero-viewers">${icon('eye')}${escape(text(featured, 'viewers') || '0')} ${escape(t('homeViewersShort'))}</span>`
+          + `<div class="hero-channel"><span class="avatar-chip">${escape(channel.slice(0, 1).toUpperCase())}</span><span>${escape(channel)}<small>${escape(t('homeFeaturedLive'))}</small></span></div><h1>${escape(text(featured, 'title'))}</h1>`
+          + (category ? `<div class="hero-tags"><span>${escape(category)}</span></div>` : '')));
+        const actions = panel('hero-actions'); actions.append(button(t('homeWatchLive'), 'button primary', () => this.openStream(featured))); hero.append(actions);
+      }
       for (const stream of streams) {
         const card = panel('stream-card');
-        card.append(html(t('uiExploreText31') + icon('video') + `<span class='viewer-tag'>${escape(text(stream, 'viewers'))}` + t('streamViewerCountSuffix') + `${escape(text(stream, 'category'))}</span><h3>${escape(text(stream, 'title'))}</h3><p>${escape(text(stream, 'channel_name'))} <span class='verified'>✓</span></p></div>`));
+        card.append(html(t('uiExploreText31') + icon('video') + `<span class='viewer-tag'>${escape(text(stream, 'viewers'))}` + t('streamViewerCountSuffix') + `${escape(text(stream, 'category'))}</span><h3>${escape(text(stream, 'title'))}</h3><p>${escape(text(stream, 'channel_name'))} <span class='verified'>\u2713</span></p></div>`));
         card.append(button(t('uiExploreText32'), 'button subtle full', () => this.openStream(stream))); cards.append(card);
       }
-    } catch (error) {if (cards.isConnected) {cards.replaceChildren(empty(t('uiExploreText33'), t('uiExploreText34'))); throw error;}}
+      for (const stream of streams.slice(0, 5)) {
+        const channel = text(stream, 'channel_name'), item = panel('channel-item');
+        item.append(html(`<span class="avatar-chip">${escape(channel.slice(0, 1).toUpperCase())}</span>`), html(`<strong>${escape(channel)}</strong><small>${escape(text(stream, 'viewers') || '0')} ${escape(t('homeChannelViewers'))}</small>`), button(t('homeChannelWatch'), 'button subtle', () => this.openStream(stream)));
+        channelList.append(item);
+      }
+    } catch (error) {if (cards.isConnected) {cards.replaceChildren(empty(t('uiExploreText33'), t('uiExploreText34'))); channelList.replaceChildren(); throw error;}}
   }
   private authView(register: boolean): void {
     this.title(t('welcomeEyebrow'), register ? t('uiAuthViewText38') : t('uiAuthViewText39'), register ? t('uiAuthViewText40') : t('uiAuthViewText41'));

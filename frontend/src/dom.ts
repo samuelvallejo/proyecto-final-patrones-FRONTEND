@@ -86,6 +86,15 @@ export function icon(key: string): string {
     settings: "<path d='M4 7h16M4 17h16'/><circle cx='8' cy='7' r='3'/><circle cx='16' cy='17' r='3'/>",
     spark: "<path d='m12 3 2.4 6.6L21 12l-6.6 2.4L12 21l-2.4-6.6L3 12l6.6-2.4Z'/><path d='m20 2 .8 2.2L23 5l-2.2.8L20 8l-.8-2.2L17 5l2.2-.8Z'/>",
     eye: "<path d='M2 12s3-7 10-7 10 7 10 7-3 7-10 7S2 12 2 12Z'/><circle cx='12' cy='12' r='3'/>",
+    home: "<path d='M3 11 12 3l9 8v9a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1Z'/>",
+    bell: "<path d='M6 9a6 6 0 0 1 12 0c0 6 2 7 2 7H4s2-1 2-7ZM10 20a2 2 0 0 0 4 0'/>",
+    gamepad: "<rect x='2' y='7' width='20' height='11' rx='5'/><path d='M7 11v3M5.5 12.5h3M15.5 11.5h.01M18 13.5h.01'/>",
+    music: "<path d='M9 18V5l11-2v13'/><circle cx='6' cy='18' r='3'/><circle cx='17' cy='16' r='3'/>",
+    palette: "<path d='M12 3a9 9 0 1 0 0 18c1.5 0 2-1 2-2s-.5-1.5-.5-2.5S14.500 15 16 15h2a3 3 0 0 0 3-3c0-5-4-9-9-9Z'/><path d='M7.5 11.5h.01M10 7.5h.01M15 7.5h.01'/>",
+    chip: "<rect x='6' y='6' width='12' height='12' rx='2'/><path d='M9 2v4M15 2v4M9 18v4M15 18v4M2 9h4M2 15h4M18 9h4M18 15h4'/>",
+    book: "<path d='M4 5a2 2 0 0 1 2-2h13v15H6a2 2 0 0 0-2 2ZM4 20a2 2 0 0 0 2 2h13'/>",
+    chat: "<path d='M4 5h16v11H9l-5 4Z'/><path d='M8 9h8M8 12h5'/>",
+    arrow: "<path d='M5 12h14M13 6l6 6-6 6'/>",
     'eye-off': "<path d='M3 3l18 18M7 6a11 11 0 0 1 5-1c7 0 10 7 10 7s-1 3-4 5M14 19h-2C5 19 2 12 2 12s1-3 4-5'/>",
   };
   return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${paths[key] ?? paths.spark}</svg>`;
