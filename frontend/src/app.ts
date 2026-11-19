@@ -84,7 +84,12 @@ export class StreamGuardApp {
   async start(): Promise<void> {
     this.api.setToken('');
     // Wake a sleeping server right away; the login form does not need to wait for it.
-    void fetch('/api/ping', {cache: 'no-store'}).catch(() => {});
+    const ping = () => {void fetch('/api/ping', {cache: 'no-store'}).catch(() => {});};
+    ping();
+    // The free host sleeps after ~10 idle minutes. While the app is visible, a tiny ping every
+    // 4 minutes keeps it awake (for example during a demo); hidden tabs stop pinging.
+    window.setInterval(() => {if (document.visibilityState === 'visible') ping();}, 240000);
+    document.addEventListener('visibilitychange', () => {if (document.visibilityState === 'visible') ping();});
     if (hasSessionHint()) {
       const loading = panel('startup-loading'), message = document.createElement('p');
       loading.setAttribute('role', 'status'); const spinner=panel('spinner'); spinner.setAttribute('aria-hidden','true');
