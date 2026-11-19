@@ -19,6 +19,10 @@ import {browserCaptureEnvironment, mobileCaptureClient} from './capture';
 type Screen = 'explore' | 'studio' | 'login' | 'register' | 'watch' | 'public-clips' | 'account' | 'moderation' | 'clips' | 'assistant' | 'gemini-chat' | 'settings';
 const adminScreens: Screen[] = ['studio', 'moderation', 'clips', 'assistant', 'settings'];
 
+/** Non-secret flag: "this browser probably has a session", so guests see the login form instantly. */
+const sessionHintKey = 'streamguard.hasSession';
+function hasSessionHint(): boolean {try {return localStorage.getItem(sessionHintKey) === '1';} catch {return true;}}
+function setSessionHint(value: boolean): void {try {if (value) localStorage.setItem(sessionHintKey, '1'); else localStorage.removeItem(sessionHintKey);} catch {/* storage unavailable */}}
 function eventWhen(value: string): string {
   const date = new Date(value); if (Number.isNaN(date.getTime())) return '';
   const time = date.toLocaleTimeString('es-CO', {hour: 'numeric', minute: '2-digit'});
@@ -71,28 +75,34 @@ export class StreamGuardApp {
     this.api.onUnauthorized = () => {
       this.geminiChat.clear();
       this.viewerCount = 0; this.viewerStream = '';
-      this.user = null;
+      this.user = null; setSessionHint(false);
       if (this.broadcasting) {media.stop(); this.broadcasting=false;}
       this.stopLocation(); this.configureMedia();
       if (!['login','register'].includes(this.screen)) this.route('login');
     };
   }
   async start(): Promise<void> {
-    const loading = panel('startup-loading');
-    loading.setAttribute('role', 'status'); const spinner=panel('spinner'); spinner.setAttribute('aria-hidden','true'); loading.append(spinner,document.createTextNode(t('processing')));
-    this.root.replaceChildren(loading);
     this.api.setToken('');
-    try {this.user=object(await this.api.request('GET','/users/me',undefined,true));} catch {this.user=null;}
-    if (this.user) {await this.bootstrap(); this.screen=location.hash.startsWith('#clip=') ? 'public-clips' : 'explore';}
+    // Wake a sleeping server right away; the login form does not need to wait for it.
+    void fetch('/api/ping', {cache: 'no-store'}).catch(() => {});
+    if (hasSessionHint()) {
+      const loading = panel('startup-loading'), message = document.createElement('p');
+      loading.setAttribute('role', 'status'); const spinner=panel('spinner'); spinner.setAttribute('aria-hidden','true');
+      message.textContent = t('bootPreparing'); loading.append(spinner, message); this.root.replaceChildren(loading);
+      const slow = window.setTimeout(() => {message.textContent = t('serverWaking');}, 2500);
+      try {await this.bootstrap();} catch {this.user = null; setSessionHint(false);} finally {window.clearTimeout(slow);}
+      if (this.user) this.screen = location.hash.startsWith('#clip=') ? 'public-clips' : 'explore';
+    }
     this.configureMedia(); this.shell(); await this.render();
     window.setInterval(() => {
       if ((this.screen === 'studio' || this.screen === 'moderation') && this.channel) this.launch(() => this.loadDashboard(false));
     }, 15000);
   }
+  /** Profile, configuration, categories and followed channels in a single round trip. */
   private async bootstrap(): Promise<void> {
-    const [config,categories] = await Promise.all([this.api.request('GET','/config'),this.api.request('GET','/categories')]);
-    this.config=object(config); this.categories=rows(categories); this.configureMedia();
-    await this.loadFollowing();
+    const data = object(await this.api.request('GET', '/bootstrap', undefined, true));
+    this.user = object(data.user); this.config = object(data.config); this.categories = rows(data.categories); this.following = rows(data.following);
+    setSessionHint(true); this.configureMedia();
   }
   private async loadFollowing(): Promise<void> {
     try {this.following = rows(await this.api.request('GET', '/discover/following', undefined, true));} catch {this.following = [];}
@@ -400,7 +410,7 @@ export class StreamGuardApp {
       try {
         const body: Row = {email: email.value.trim(), password: password.value}; if (register) {body.username = username.value; body.aiConsent = consent.control.checked;}
         await this.api.sealed(register ? '/auth/register' : '/auth/login', body);
-        password.value=''; this.user=object(await this.api.request('GET','/users/me')); await this.bootstrap();
+        password.value=''; await this.bootstrap();
         this.geminiChat.clear(); this.channel = ''; this.dashboard = {}; toast(t('authSuccess')); this.route('explore');
       } catch (error) {
         // Server outages, duplicates (409) and rate limits (429) are not form mistakes: show their own message.
@@ -969,7 +979,7 @@ export class StreamGuardApp {
     this.content.append(button(t('uiAccountText201'), 'button subtle', () => {this.channel = ''; this.route('studio');}), button(t('uiAccountText202'), 'button danger', async () => {
       if (this.broadcasting) {await media.finalizeRecording(); await this.api.request('POST', `/streams/${this.stream}/end`, {});}
       if (this.locationChannel) await this.api.request('PUT',`/channels/${this.locationChannel}/location`,{shared:false});
-      this.stopLocation(); await this.api.request('POST', '/auth/logout', {}); this.geminiChat.clear(); media.stop(); this.broadcasting = false; this.api.setToken(''); this.user = null; this.channel = ''; this.dashboard = {}; this.configureMedia(); this.route('login');
+      this.stopLocation(); await this.api.request('POST', '/auth/logout', {}); setSessionHint(false); this.geminiChat.clear(); media.stop(); this.broadcasting = false; this.api.setToken(''); this.user = null; this.channel = ''; this.dashboard = {}; this.configureMedia(); this.route('login');
     }));
     const history=panel('profile-history'); this.content.append(history);
     const streams=rows(await this.api.request('GET','/users/me/streams')); if (!history.isConnected) return;

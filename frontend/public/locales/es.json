@@ -490,5 +490,6 @@
   "categoryNoLive": "Sin directos ahora",
   "languageSpanish": "Español",
   "allLabel": "Todas",
-  "viewersShort": "viendo"
+  "viewersShort": "viendo",
+  "serverWaking": "Despertando el servidor… la primera visita después de un rato tarda unos segundos."
 }
