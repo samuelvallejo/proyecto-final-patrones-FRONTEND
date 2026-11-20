@@ -16,11 +16,13 @@ function fromBase64(value: string): Uint8Array<ArrayBuffer> {
 }
 /** HTTP failure with its status; `unavailable` means the StreamGuard backend itself did not answer. */
 export class ApiRequestError extends Error {
-  constructor(message: string, readonly status: number, readonly unavailable = false) { super(message); }
+  /** `code` comes from the server for errors meant to be shown as they are (MAINTENANCE, REGISTRATION_CLOSED). */
+  constructor(message: string, readonly status: number, readonly unavailable = false, readonly code = '') { super(message); }
 }
 export class ApiClient {
   token = '';
   onUnauthorized: () => void = () => {};
+  onMaintenance: () => void = () => {};
   setToken(value: string): void {
     this.token = value;
     sessionStorage.removeItem('streamguard.token'); localStorage.removeItem('streamguard.token');
@@ -67,7 +69,9 @@ export class ApiClient {
     }
     if (!response.ok) {
       if (response.status === 401) { this.setToken(''); this.onUnauthorized(); }
-      const message = text(object(value), 'error');
+      const message = text(object(value), 'error'), code = text(object(value), 'code');
+      if (response.status === 503 && code === 'MAINTENANCE') this.onMaintenance();
+      if (code) throw new ApiRequestError(message || t('operationFailed'), response.status, false, code);
       if (!message && gatewayFailure) throw new ApiRequestError(t('backendUnavailable'), response.status, true);
       throw new ApiRequestError(message || t('operationFailed'), response.status);
     }

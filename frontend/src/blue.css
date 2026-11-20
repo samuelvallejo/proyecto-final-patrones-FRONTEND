@@ -166,3 +166,15 @@ button:focus-visible,a:focus-visible{outline-color:var(--azure)}input:focus,text
 .auth-notices{display:flex;flex-direction:column;gap:10px;margin-bottom:12px}.auth-notices:empty{display:none}.auth-notices .announcement-banner{margin:0}
 .admin-section textarea{width:100%}
 @media(max-width:760px){.announcement-banner{margin:0 16px 4px}}
+
+/* Maintenance mode */
+.auth-shell.maintenance-shell{display:grid;grid-template-columns:1fr;place-items:center;min-height:100vh;padding:24px 16px}
+.maintenance-view{display:flex;flex-direction:column;align-items:center;gap:6px;max-width:520px;padding:38px 32px;border:1px solid #dbe6f7;border-radius:24px;background:#ffffffe6;box-shadow:0 18px 50px #2f6bff1a;text-align:center}
+.maintenance-view h1{margin:0;font-size:28px}.maintenance-view p.muted{margin:4px 0 14px;line-height:1.5}
+.maintenance-view .announcement-banner{margin:0 0 14px;width:100%;text-align:left}
+.maintenance-icon{display:grid;place-items:center;width:64px;height:64px;margin-bottom:8px;border-radius:20px;background:linear-gradient(135deg,#2f6bff,#4fc3ff);color:#fff}
+.maintenance-icon svg{width:30px;height:30px}
+.maintenance-strip{display:flex;align-items:center;gap:10px;margin:0 34px 8px;padding:10px 14px;border-radius:14px;background:#fff3e3;border:1px solid #ffc58a;color:#5a3200;font-size:13px;font-weight:600}
+.maintenance-strip svg{flex:0 0 auto;width:18px;height:18px;color:#e07800}
+.platform-notice{margin:0}.switch-help{margin:-4px 0 12px 30px;font-size:13px}
+@media(max-width:760px){.maintenance-strip{margin:0 16px 8px}.maintenance-view{padding:28px 20px}}

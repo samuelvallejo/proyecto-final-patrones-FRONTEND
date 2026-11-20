@@ -50,6 +50,7 @@ export class StreamGuardApp {
   private config: Row = {};
   /** Maintenance, registration and the global announcement, as the server reports them. */
   private platform: Row = {};
+  private maintenanceScreen = false;
   private dashboard: Row = {};
   private categories: Row[] = [];
   private following: Row[] = [];
@@ -80,6 +81,7 @@ export class StreamGuardApp {
   private collaborationCard: HTMLDivElement | null = null;
 
   constructor(private readonly root: HTMLElement) {
+    this.api.onMaintenance = () => this.showMaintenance();
     this.api.onUnauthorized = () => {
       this.geminiChat.clear();
       this.viewerCount = 0; this.viewerStream = '';
@@ -103,7 +105,12 @@ export class StreamGuardApp {
       loading.setAttribute('role', 'status'); const spinner=panel('spinner'); spinner.setAttribute('aria-hidden','true');
       message.textContent = t('bootPreparing'); loading.append(spinner, message); this.root.replaceChildren(loading);
       const slow = window.setTimeout(() => {message.textContent = t('serverWaking');}, 2500);
-      try {await this.bootstrap();} catch {this.user = null; setSessionHint(false);} finally {window.clearTimeout(slow);}
+      try {await this.bootstrap();}
+      catch (error) {
+        // Maintenance keeps the session: the account simply waits until administrators finish.
+        if (error instanceof ApiRequestError && error.code === 'MAINTENANCE') {window.clearTimeout(slow); this.showMaintenance(true); return;}
+        this.user = null; setSessionHint(false);
+      } finally {window.clearTimeout(slow);}
       if (this.user) this.screen = location.hash.startsWith('#clip=') ? 'public-clips' : 'explore';
     }
     this.configureMedia(); this.shell(); await this.render();
@@ -175,7 +182,9 @@ export class StreamGuardApp {
       account.append(bell, badge);
     }
     header.append(menu, find, account); this.content = panel('page-content'); this.content.id = 'page-content'; this.content.setAttribute('role', 'main'); this.content.tabIndex = -1;
-    const notice = this.announcementBanner(); main.append(header); if (notice) main.append(notice);
+    const notice = this.announcementBanner(); main.append(header);
+    if (this.isAdmin() && flag(this.platform, 'maintenance')) main.append(html(`<div class="maintenance-strip" role="status">${icon('settings')}<span>${escape(t('maintenanceAdminStrip'))}</span></div>`));
+    if (notice) main.append(notice);
     main.append(this.content); this.root.append(skipLink, side, main);
     if (this.broadcasting && this.screen !== 'studio') this.floatingPlayer();
   }
@@ -185,6 +194,7 @@ export class StreamGuardApp {
     control.setAttribute('aria-label', label); if (this.screen === key) control.setAttribute('aria-current', 'page'); return control;
   }
   private route(next: Screen): void {
+    if (this.maintenanceScreen) return;
     if (!this.user && !['login','register'].includes(next)) next='login';
     if (next === 'admin' && !this.isAdmin()) next = 'explore';
     this.clearCollaboration();
@@ -442,13 +452,13 @@ export class StreamGuardApp {
         this.geminiChat.clear(); this.channel = ''; this.dashboard = {}; toast(t('authSuccess')); this.route('explore');
       } catch (error) {
         // Server outages, duplicates (409) and rate limits (429) are not form mistakes: show their own message.
-        const specific = error instanceof ApiRequestError && (error.unavailable || error.status === 409 || error.status === 429);
+        const specific = error instanceof ApiRequestError && (error.unavailable || error.status === 409 || error.status === 429 || Boolean(error.code));
         toast(specific ? error.message : t('authFailed'), true);
       } finally {submit.disabled = false;}
     });
     password.addEventListener('keydown', event => {if (event.key === 'Enter') submit.click();});
     card.append(submit, button(register ? t('uiAuthViewText50') : t('uiAuthViewText51'), 'text-button', () => this.route(register ? 'login' : 'register')));
-    guidance(card,register ? t('registerGuidance') : t('loginGuidance')); this.content.append(card);
+    guidance(card,register ? t('registerGuidance') : t('loginGuidance')); this.content.append(card); this.fillAuthNotices(notices);
   }
   private chooseChannel(channels: Row[]): void {
     this.title(t('uiChooseChannelText52'), t('uiChooseChannelText53'), t('uiChooseChannelText54'));
@@ -1060,6 +1070,30 @@ export class StreamGuardApp {
   }
   private fillAuthNotices(box: HTMLElement): void {
     box.replaceChildren(); const banner = this.announcementBanner(); if (banner) box.append(banner);
+    const register = Boolean(box.dataset.register), maintenance = flag(this.platform, 'maintenance'), closed = this.platform.registrationOpen === false;
+    const notice = (title: string, detail: string) => html(`<div class="info-banner platform-notice">${icon('settings')}<div><strong>${escape(title)}</strong><p>${escape(detail)}</p></div></div>`);
+    if (maintenance) box.append(notice(t('maintenanceTitle'), t(register ? 'maintenanceRegisterHelp' : 'maintenanceLoginHelp')));
+    else if (register && closed) box.append(notice(t('registrationClosedTitle'), t('registrationClosedHelp')));
+    const submit = register ? box.parentElement?.querySelector<HTMLButtonElement>('.auth-card .button.primary') : null;
+    if (submit) submit.disabled = maintenance || closed;
+  }
+  /** Shown to signed-in accounts that are not administrators while maintenance is on. */
+  private showMaintenance(signedIn = Boolean(this.user)): void {
+    if (!signedIn || this.isAdmin()) return;
+    this.maintenanceScreen = true; this.platform = {...this.platform, maintenance: true};
+    if (this.broadcasting) {media.stop(); this.broadcasting = false;}
+    this.stopLocation();
+    this.root.className = 'auth-shell maintenance-shell';
+    const view = panel('maintenance-view');
+    view.innerHTML = `<div class="maintenance-icon">${icon('settings')}</div><p class="eyebrow">${escape(t('maintenanceEyebrow'))}</p><h1>${escape(t('maintenanceTitle'))}</h1><p class="muted">${escape(t('maintenanceDetail'))}</p>`;
+    const actions = panel('action-row');
+    actions.append(button(t('maintenanceRetry'), 'button primary', () => location.reload()), button(t('uiAccountText202'), 'button subtle', async () => {
+      try {await this.api.request('POST', '/auth/logout', {});} catch {/* the session may already be closed */}
+      setSessionHint(false); location.reload();
+    }));
+    view.append(actions);
+    const announcement = this.announcementBanner(); if (announcement) view.prepend(announcement);
+    this.root.replaceChildren(view);
   }
   private isAdmin(): boolean {return text(this.user, 'role') === 'ADMIN';}
   /** A yes/no question in the app's own dialog; closing it counts as "no". */
@@ -1084,6 +1118,26 @@ export class StreamGuardApp {
       figures.append(html(`<article class="metric"><span>${escape(t(label))}</span><strong>${escape(text(totals, key) || '0')}</strong></article>`));
     this.content.append(figures);
     this.platform = object(object(overview).platform);
+    const switches = panel('surface admin-section'); switches.append(html(`<div class="panel-heading"><h2>${escape(t('adminPlatformTitle'))}</h2></div><p class="muted">${escape(t('adminPlatformHelp'))}</p>`));
+    const maintenance = checkbox(t('adminMaintenanceLabel'), flag(this.platform, 'maintenance')), registration = checkbox(t('adminRegistrationLabel'), this.platform.registrationOpen !== false);
+    const saveSwitches = async (changed: 'maintenance' | 'registration') => {
+      // The switch that changed already shows its new value; "before" is what to restore if saving fails.
+      const before = {maintenance: changed === 'maintenance' ? !maintenance.control.checked : maintenance.control.checked, registrationOpen: changed === 'registration' ? !registration.control.checked : registration.control.checked};
+      const next = {maintenance: maintenance.control.checked, registrationOpen: registration.control.checked};
+      if (changed === 'maintenance' && next.maintenance && !await this.confirmAction(t('adminMaintenanceOnTitle'), t('adminMaintenanceOnDetail'), t('adminMaintenanceOn'))) {maintenance.control.checked = false; return;}
+      maintenance.control.disabled = registration.control.disabled = true;
+      try {
+        this.platform = {...this.platform, ...object(await this.api.request('PUT', '/admin/platform', next))};
+        toast(changed === 'maintenance' ? t(next.maintenance ? 'adminMaintenanceEnabled' : 'adminMaintenanceDisabled') : t(next.registrationOpen ? 'adminRegistrationOpened' : 'adminRegistrationClosed'));
+        this.route('admin');
+      } catch (error) {
+        maintenance.control.checked = before.maintenance; registration.control.checked = before.registrationOpen; throw error;
+      } finally {maintenance.control.disabled = registration.control.disabled = false;}
+    };
+    maintenance.control.addEventListener('change', () => this.launch(() => saveSwitches('maintenance')));
+    registration.control.addEventListener('change', () => this.launch(() => saveSwitches('registration')));
+    switches.append(maintenance.element, html(`<p class="muted switch-help">${escape(t('adminMaintenanceHelp'))}</p>`), registration.element, html(`<p class="muted switch-help">${escape(t('adminRegistrationHelp'))}</p>`));
+    this.content.append(switches);
     const current = object(this.platform.announcement), currentImportant = text(current, 'level') === 'IMPORTANT';
     const announce = panel('surface admin-section'); announce.append(html(`<div class="panel-heading"><h2>${escape(t('adminAnnouncementTitle'))}</h2></div><p class="muted">${escape(t('adminAnnouncementHelp'))}</p>`));
     if (text(current, 'message')) {
@@ -1181,6 +1235,8 @@ export class StreamGuardApp {
       ADMIN_REACTIVATE: t('adminActionReactivate'), ADMIN_END_STREAM: t('adminActionEndStream'),
       ADMIN_CATEGORY_CREATE: t('adminActionCategoryCreate'), ADMIN_CATEGORY_RENAME: t('adminActionCategoryRename'),
       ADMIN_ANNOUNCE: t('adminActionAnnounce'), ADMIN_ANNOUNCE_REMOVE: t('adminActionAnnounceRemove'),
+      ADMIN_MAINTENANCE_ON: t('adminActionMaintenanceOn'), ADMIN_MAINTENANCE_OFF: t('adminActionMaintenanceOff'),
+      ADMIN_REGISTRATION_OPEN: t('adminActionRegistrationOpen'), ADMIN_REGISTRATION_CLOSE: t('adminActionRegistrationClose'),
     };
     for (const entry of entries) {
       const when = new Date(text(entry, 'created_at')).toLocaleString('es-CO', {day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit'});

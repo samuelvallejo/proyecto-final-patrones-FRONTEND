@@ -345,6 +345,10 @@ html[data-theme="dark"] .announcement-banner>svg{color:#2f6bff}
 html[data-theme="dark"] .announcement-banner.important>svg{color:#daa76c}
 html[data-theme="dark"] .announcement-close{background:transparent}
 html[data-theme="dark"] .announcement-close:hover{background:#0000000f}
+html[data-theme="dark"] .maintenance-view{border:1px solid #133261;background:#0e131be6}
+html[data-theme="dark"] .maintenance-icon{background:linear-gradient(135deg,#2f6bff,#4fc3ff);color:#fff}
+html[data-theme="dark"] .maintenance-strip{background:#382000;border:1px solid #b65c00;color:#eed8bd}
+html[data-theme="dark"] .maintenance-strip svg{color:#daa76c}
 /* exceptions: buttons that sit on the bright hero keep their light look */
 html[data-theme="dark"] .home-hero .primary{background:#fff;color:#1553d6}
 html[data-theme="dark"] .home-hero .primary:hover{background:#eaf3ff}
