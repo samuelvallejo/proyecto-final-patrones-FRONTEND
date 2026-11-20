@@ -492,5 +492,7 @@
   "allLabel": "Todas",
   "viewersShort": "viendo",
   "serverWaking": "Despertando el servidor… la primera visita después de un rato tarda unos segundos.",
-  "studioScreenOnly": "Compartir solo pantalla y micrófono"
+  "studioScreenOnly": "Compartir solo pantalla y micrófono",
+  "themeSwitchToDark": "Cambiar a modo oscuro",
+  "themeSwitchToLight": "Cambiar a modo claro"
 }

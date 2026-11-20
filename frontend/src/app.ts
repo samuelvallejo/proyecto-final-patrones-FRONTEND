@@ -11,6 +11,8 @@ import {ModerationPolicyDraft} from './moderation-policy';
 import './moderation-presets.css';
 import './light.css';
 import './blue.css';
+import './dark.css';
+import {toggleTheme, syncToggle} from './theme';
 import {GeminiChatView} from './gemini-chat';
 import {viewerCounter, viewerNumber, updateViewerCounters} from './viewer-count';
 import {StudioInputs} from './studio-inputs';
@@ -118,6 +120,7 @@ export class StreamGuardApp {
     this.root.replaceChildren(); this.root.className = 'app-shell';
     if (!this.user) {
       this.root.className='auth-shell'; this.content=panel('auth-content');
+      const floatingTheme = this.themeToggle(); floatingTheme.classList.add('theme-floating'); this.root.append(floatingTheme);
       this.root.append(html(`<aside class="auth-introduction"><a class="auth-brand" href="#">${icon('shield')}<span>StreamGuard</span></a><p class="eyebrow">${escape(t('authBrandEyebrow'))}</p><h1>${escape(t('authBrandTitle'))}</h1><p>${escape(t('authBrandDescription'))}</p><div class="auth-benefits">${icon('video')}<span>${escape(t('authBrandVideo'))}</span>${icon('shield')}<span>${escape(t('authBrandCommunity'))}</span></div></aside>`),this.content); return;
     }
     const skipLink = document.createElement('a'); skipLink.className = 'skip-link'; skipLink.href = '#page-content'; skipLink.textContent = t('skipToMainContent');
@@ -154,6 +157,7 @@ export class StreamGuardApp {
     query.addEventListener('keydown', event => {if (event.key === 'Enter') {this.search = query.value; this.route('explore');}});
     find.append(html(icon('search')), query);
     const account = panel('account-actions'); account.append(html(t('uiShellText17')));
+    const themeButton = this.themeToggle(); account.append(themeButton);
     if (!this.user) account.append(button(t('uiShellText18'), 'button primary small', () => this.route('login')));
     else {
       const badge = button(text(this.user, 'username').slice(0, 1).toUpperCase(), 'avatar', () => this.route('account')); badge.setAttribute('aria-label', t('myAccount'));
@@ -224,6 +228,11 @@ export class StreamGuardApp {
   }
   private title(eyebrow: string, heading: string, detail: string): void {
     this.content.append(html(`<div class="page-heading"><p class="eyebrow">${escape(eyebrow)}</p><h1>${escape(heading)}</h1><p class="muted">${escape(detail)}</p></div>`));
+  }
+  /** Sun/moon button; it is the same control on the login screen and in the top bar. */
+  private themeToggle(): HTMLButtonElement {
+    const control = button('', 'button icon-button theme-toggle', () => toggleTheme());
+    syncToggle(control); return control;
   }
   private categoryOptions(): Array<[string, string]> {
     return [[t('allLabel'), ''], ...this.categories.map((row): [string, string] => [text(row, 'name'), text(row, 'slug')])];
