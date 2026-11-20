@@ -1,149 +1,161 @@
 import {object, text} from './contracts';
 import {t} from './i18n';
+import {connectionTicket} from './api';
+
+interface RelaySession {
+  api: string; token: string; stream: string; local: MediaStream | null; format: string; notice: (message: string) => void;
+}
 
 /** Transient, bounded video fragments over WSS for networks that block WebRTC. */
-let socket: WebSocket | null = null;
-let recorder: MediaRecorder | null = null;
-let recordTimer: number | undefined;
-let retryTimer: number | undefined;
-let heartbeat: number | undefined;
-let source: MediaSource | null = null;
-let buffer: SourceBuffer | null = null;
-let video: HTMLVideoElement | null = null;
-let sourceUrl = '';
-let fragmentUrl = '';
-let queue: ArrayBuffer[] = [];
-let mime = '';
-let independentFiles = false;
-let viewers = 0;
-let session: {api: string; token: string; stream: string; local: MediaStream | null; format: string; notice: (message: string) => void} | null = null;
+export class MediaRelay {
+  private socket: WebSocket | null = null;
+  private recorder: MediaRecorder | null = null;
+  private recordTimer: number | undefined;
+  private retryTimer: number | undefined;
+  private heartbeat: number | undefined;
+  private source: MediaSource | null = null;
+  private buffer: SourceBuffer | null = null;
+  private video: HTMLVideoElement | null = null;
+  private sourceUrl = '';
+  private fragmentUrl = '';
+  private queue: ArrayBuffer[] = [];
+  private mime = '';
+  private independentFiles = false;
+  private viewers = 0;
+  private session: RelaySession | null = null;
 
-function publish(): void {
-  const current = session, ws = socket;
-  if (!current?.local || !viewers || recorder || ws?.readyState !== WebSocket.OPEN) return;
-  const chunks: Blob[] = [];
-  const recording = new MediaRecorder(current.local, {mimeType: current.format, videoBitsPerSecond: 650000, audioBitsPerSecond: 48000});
-  recorder = recording;
-  recording.ondataavailable = event => {if (event.data.size) chunks.push(event.data);};
-  recording.onstop = () => {
-    if (recorder !== recording || session !== current || socket !== ws) return;
-    recorder = null;
-    const fragment = new Blob(chunks, {type: recording.mimeType});
-    if (fragment.size && fragment.size <= 1024 * 1024 && ws.readyState === WebSocket.OPEN && ws.bufferedAmount < 1024 * 1024) ws.send(fragment);
-    publish();
-  };
-  recording.start(); recordTimer = window.setTimeout(() => {if (recording.state === 'recording') recording.stop();}, 2200);
-}
-
-function stopRecording(): void {
-  window.clearTimeout(recordTimer);
-  const previous = recorder; recorder = null;
-  if (previous?.state === 'recording') previous.stop();
-}
-
-function playing(): void {
-  const placeholder = document.getElementById('video-placeholder');
-  if (placeholder) placeholder.style.display = 'none';
-}
-
-function play(): void {
-  if (video) void video.play().catch(() => {if (video) {video.muted = true; void video.play().catch(() => {});}});
-}
-
-function append(): void {
-  if (!video || !buffer || buffer.updating || !queue.length || source?.readyState !== 'open') return;
-  if (video.currentTime > 25 && buffer.buffered.length && buffer.buffered.start(0) < video.currentTime - 20) {
-    buffer.remove(0, video.currentTime - 20); return;
-  }
-  const fragment = queue.shift();
-  if (fragment) {
-    try {buffer.appendBuffer(fragment);}
-    catch (error) {console.warn('Relay fragment rejected', error); resetPlayer();}
-  }
-}
-
-function nextFragment(): void {
-  if (!video || !queue.length) return;
-  if (fragmentUrl) URL.revokeObjectURL(fragmentUrl);
-  fragmentUrl = URL.createObjectURL(new Blob([queue.shift()!], {type: mime}));
-  video.src = fragmentUrl; play();
-}
-
-function resetPlayer(): void {
-  buffer = null; source = null;
-  if (sourceUrl) URL.revokeObjectURL(sourceUrl); sourceUrl = '';
-  if (fragmentUrl) URL.revokeObjectURL(fragmentUrl); fragmentUrl = '';
-  if (video) {video.onended = null; video.onplaying = null;}
-  video = null;
-}
-
-function player(format: string, files = independentFiles): void {
-  const element = document.getElementById('live-video');
-  if (!(element instanceof HTMLVideoElement)) return;
-  if (video === element && mime === format && independentFiles === files) return;
-  resetPlayer(); mime = format; independentFiles = files; video = element; video.srcObject = null;
-  video.dataset.transport = 'relay'; video.onplaying = playing;
-  if (!files && window.MediaSource && MediaSource.isTypeSupported(format)) {
-    const media = new MediaSource(); source = media; sourceUrl = URL.createObjectURL(media); video.src = sourceUrl;
-    media.addEventListener('sourceopen', () => {
-      if (source !== media) return;
-      buffer = media.addSourceBuffer(format); buffer.mode = 'sequence';
-      buffer.addEventListener('updateend', () => {
-        if (video && buffer?.buffered.length) {
-          const end = buffer.buffered.end(buffer.buffered.length - 1);
-          if (end - video.currentTime > 7) video.currentTime = Math.max(0, end - 3);
-          play();
-        }
-        append();
-      });
-      append();
-    }, {once: true});
-  } else {
-    video.onended = nextFragment;
-    nextFragment();
-  }
-}
-
-function open(): void {
-  const current = session; if (!current) return;
-  const ws = new WebSocket(`${current.api.replace(/^http/, 'ws')}/ws/media`); socket = ws; ws.binaryType = 'arraybuffer';
-  ws.onopen = () => {void connectionTicket().then(ticket => {if (socket===ws && session===current) ws.send(JSON.stringify({type: 'join', streamId: current.stream, token: ticket, host: Boolean(current.local), format: current.format}));}).catch(() => ws.close());};
-  ws.onmessage = event => {
-    if (socket !== ws || session !== current) return;
-    if (event.data instanceof ArrayBuffer) {
-      queue.push(event.data); if (queue.length > 3) queue.shift();
-      player(mime); if (buffer) append(); else if (video && !source && (video.ended || !video.getAttribute('src'))) nextFragment();
-      return;
-    }
-    try {
-      const data = object(JSON.parse(String(event.data)) as unknown);
-      if (text(data, 'type') === 'relay-ready' || text(data, 'type') === 'relay-demand') {
-        viewers = Number(data.viewers) || 0;
-        if (viewers) publish(); else stopRecording();
-      }
-      if (text(data, 'type') === 'relay-format') player(text(data, 'format'), data.fragmentMode === 'file');
-      if (text(data, 'type') === 'error') current.notice(text(data, 'message'));
-      if (!heartbeat) heartbeat = window.setInterval(() => {if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({type: 'ping'}));}, 20000);
-    } catch (error) {console.warn('Relay event rejected', error);}
-  };
-  ws.onclose = event => {
-    if (session !== current || socket !== ws) return;
-    window.clearInterval(heartbeat); heartbeat = undefined; stopRecording(); viewers = 0;
-    if (event.code === 1008) {current.notice(t('mediaRelayUnavailable')); session = null; return;}
-    retryTimer = window.setTimeout(open, 2000);
-  };
-}
-
-export const relay = {
   start(api: string, token: string, stream: string, local: MediaStream | null, format: string, notice: (message: string) => void): void {
-    if (session?.stream === stream) return;
-    this.stop(); session = {api, token, stream, local, format, notice}; open();
-  },
-  viewerActive(): boolean {return Boolean(session && !session.local);},
+    if (this.session?.stream === stream) return;
+    this.stop(); this.session = {api, token, stream, local, format, notice}; this.open();
+  }
+
+  viewerActive(): boolean {return Boolean(this.session && !this.session.local);}
+
   stop(): void {
-    session = null; window.clearTimeout(retryTimer); window.clearInterval(heartbeat); heartbeat = undefined;
-    stopRecording(); const previous = socket; socket = null; if (previous) {previous.onclose = null; previous.close();}
-    resetPlayer(); queue = []; mime = ''; viewers = 0;
-  },
-};
-import {connectionTicket} from './api';
+    this.session = null; window.clearTimeout(this.retryTimer); window.clearInterval(this.heartbeat); this.heartbeat = undefined;
+    this.stopRecording(); const previous = this.socket; this.socket = null; if (previous) {previous.onclose = null; previous.close();}
+    this.resetPlayer(); this.queue = []; this.mime = ''; this.viewers = 0;
+  }
+
+  private publish(): void {
+    const current = this.session, ws = this.socket;
+    if (!current?.local || !this.viewers || this.recorder || ws?.readyState !== WebSocket.OPEN) return;
+    const chunks: Blob[] = [];
+    const recording = new MediaRecorder(current.local, {mimeType: current.format, videoBitsPerSecond: 650000, audioBitsPerSecond: 48000});
+    this.recorder = recording;
+    recording.ondataavailable = event => {if (event.data.size) chunks.push(event.data);};
+    recording.onstop = () => {
+      if (this.recorder !== recording || this.session !== current || this.socket !== ws) return;
+      this.recorder = null;
+      const fragment = new Blob(chunks, {type: recording.mimeType});
+      if (fragment.size && fragment.size <= 1024 * 1024 && ws.readyState === WebSocket.OPEN && ws.bufferedAmount < 1024 * 1024) ws.send(fragment);
+      this.publish();
+    };
+    recording.start(); this.recordTimer = window.setTimeout(() => {if (recording.state === 'recording') recording.stop();}, 2200);
+  }
+
+  private stopRecording(): void {
+    window.clearTimeout(this.recordTimer);
+    const previous = this.recorder; this.recorder = null;
+    if (previous?.state === 'recording') previous.stop();
+  }
+
+  private playing(): void {
+    const placeholder = document.getElementById('video-placeholder');
+    if (placeholder) placeholder.style.display = 'none';
+  }
+
+  private play(): void {
+    const video = this.video;
+    if (video) void video.play().catch(() => {video.muted = true; void video.play().catch(() => {});});
+  }
+
+  private append(): void {
+    const video = this.video, buffer = this.buffer;
+    if (!video || !buffer || buffer.updating || !this.queue.length || this.source?.readyState !== 'open') return;
+    if (video.currentTime > 25 && buffer.buffered.length && buffer.buffered.start(0) < video.currentTime - 20) {
+      buffer.remove(0, video.currentTime - 20); return;
+    }
+    const fragment = this.queue.shift();
+    if (fragment) {
+      try {buffer.appendBuffer(fragment);}
+      catch (error) {console.warn('Relay fragment rejected', error); this.resetPlayer();}
+    }
+  }
+
+  private nextFragment(): void {
+    if (!this.video || !this.queue.length) return;
+    if (this.fragmentUrl) URL.revokeObjectURL(this.fragmentUrl);
+    this.fragmentUrl = URL.createObjectURL(new Blob([this.queue.shift()!], {type: this.mime}));
+    this.video.src = this.fragmentUrl; this.play();
+  }
+
+  private resetPlayer(): void {
+    this.buffer = null; this.source = null;
+    if (this.sourceUrl) URL.revokeObjectURL(this.sourceUrl); this.sourceUrl = '';
+    if (this.fragmentUrl) URL.revokeObjectURL(this.fragmentUrl); this.fragmentUrl = '';
+    if (this.video) {this.video.onended = null; this.video.onplaying = null;}
+    this.video = null;
+  }
+
+  private player(format: string, files = this.independentFiles): void {
+    const element = document.getElementById('live-video');
+    if (!(element instanceof HTMLVideoElement)) return;
+    if (this.video === element && this.mime === format && this.independentFiles === files) return;
+    this.resetPlayer(); this.mime = format; this.independentFiles = files; this.video = element; element.srcObject = null;
+    element.dataset.transport = 'relay'; element.onplaying = () => this.playing();
+    if (!files && window.MediaSource && MediaSource.isTypeSupported(format)) {
+      const media = new MediaSource(); this.source = media; this.sourceUrl = URL.createObjectURL(media); element.src = this.sourceUrl;
+      media.addEventListener('sourceopen', () => {
+        if (this.source !== media) return;
+        const buffer = media.addSourceBuffer(format); buffer.mode = 'sequence'; this.buffer = buffer;
+        buffer.addEventListener('updateend', () => {
+          if (this.video && this.buffer?.buffered.length) {
+            const end = this.buffer.buffered.end(this.buffer.buffered.length - 1);
+            if (end - this.video.currentTime > 7) this.video.currentTime = Math.max(0, end - 3);
+            this.play();
+          }
+          this.append();
+        });
+        this.append();
+      }, {once: true});
+    } else {
+      element.onended = () => this.nextFragment();
+      this.nextFragment();
+    }
+  }
+
+  private open(): void {
+    const current = this.session; if (!current) return;
+    const ws = new WebSocket(`${current.api.replace(/^http/, 'ws')}/ws/media`); this.socket = ws; ws.binaryType = 'arraybuffer';
+    ws.onopen = () => {void connectionTicket().then(ticket => {if (this.socket === ws && this.session === current) ws.send(JSON.stringify({type: 'join', streamId: current.stream, token: ticket, host: Boolean(current.local), format: current.format}));}).catch(() => ws.close());};
+    ws.onmessage = event => {
+      if (this.socket !== ws || this.session !== current) return;
+      if (event.data instanceof ArrayBuffer) {
+        this.queue.push(event.data); if (this.queue.length > 3) this.queue.shift();
+        this.player(this.mime);
+        if (this.buffer) this.append(); else if (this.video && !this.source && (this.video.ended || !this.video.getAttribute('src'))) this.nextFragment();
+        return;
+      }
+      try {
+        const data = object(JSON.parse(String(event.data)) as unknown);
+        if (text(data, 'type') === 'relay-ready' || text(data, 'type') === 'relay-demand') {
+          this.viewers = Number(data.viewers) || 0;
+          if (this.viewers) this.publish(); else this.stopRecording();
+        }
+        if (text(data, 'type') === 'relay-format') this.player(text(data, 'format'), data.fragmentMode === 'file');
+        if (text(data, 'type') === 'error') current.notice(text(data, 'message'));
+        if (!this.heartbeat) this.heartbeat = window.setInterval(() => {if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({type: 'ping'}));}, 20000);
+      } catch (error) {console.warn('Relay event rejected', error);}
+    };
+    ws.onclose = event => {
+      if (this.session !== current || this.socket !== ws) return;
+      window.clearInterval(this.heartbeat); this.heartbeat = undefined; this.stopRecording(); this.viewers = 0;
+      if (event.code === 1008) {current.notice(t('mediaRelayUnavailable')); this.session = null; return;}
+      this.retryTimer = window.setTimeout(() => this.open(), 2000);
+    };
+  }
+}
+
+/** One relay connection per page. */
+export const relay = new MediaRelay();
