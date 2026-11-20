@@ -580,17 +580,23 @@ export class StreamGuardApp {
     } else {
       const form = panel('stream-form'), name = input(t('uiStudioText90')), description = area(t('uiStudioText91'));
       const categories = select(this.categories.map(row => [text(row, 'name'), text(row, 'id')]));
-      const shareScreen = checkbox(t('uiStudioText92')); const row = panel('form-row');
+      const shareScreen = checkbox(t('uiStudioText92')), shareScreenOnly = checkbox(t('studioScreenOnly')); const row = panel('form-row');
+      // Either option shares the screen; only one can be on, and only one of them may show the webcam.
+      shareScreen.control.addEventListener('change', () => {if (shareScreen.control.checked) shareScreenOnly.control.checked = false;});
+      shareScreenOnly.control.addEventListener('change', () => {if (shareScreenOnly.control.checked) shareScreen.control.checked = false;});
       row.append(field(t('uiStudioText94'), categories), field(t('uiCreateChannelText64'), description));
       const cameraFacing = select([[t('mediaFrontCamera'), 'user'], [t('mediaRearCamera'), 'environment']]);
       const inputs = new StudioInputs();
-      shareScreen.control.disabled = !media.screenSharingSupported() || inputs.mode.value !== 'browser';
-      if (shareScreen.control.disabled) shareScreen.control.checked = false;
+      const syncScreenOptions = (): void => {
+        shareScreen.control.disabled = shareScreenOnly.control.disabled = !media.screenSharingSupported() || inputs.mode.value !== 'browser';
+        if (shareScreen.control.disabled) shareScreen.control.checked = shareScreenOnly.control.checked = false;
+      };
+      syncScreenOptions();
       const facingField = field(t('mediaCameraSelection'), cameraFacing);
       facingField.style.display = !inputs.mobile || inputs.mode.value === 'android' ? 'none' : '';
-      form.append(field(t('uiStudioText93'), name), row, facingField, shareScreen.element);
+      form.append(field(t('uiStudioText93'), name), row, facingField, shareScreen.element, shareScreenOnly.element);
       form.append(inputs.element);
-      inputs.mode.addEventListener('change', () => {facingField.style.display = !inputs.mobile || inputs.mode.value === 'android' ? 'none' : ''; shareScreen.control.disabled = !media.screenSharingSupported() || inputs.mode.value !== 'browser'; if (shareScreen.control.disabled) shareScreen.control.checked = false;});
+      inputs.mode.addEventListener('change', () => {facingField.style.display = !inputs.mobile || inputs.mode.value === 'android' ? 'none' : ''; syncScreenOptions();});
       const mediaHint = panel('capture-hint');
       mediaHint.textContent = inputs.mobile ? t('mediaMobileCameraHint') : t('mediaDevicePermissionsHint');
       form.append(mediaHint);
@@ -599,7 +605,8 @@ export class StreamGuardApp {
         if (!validate(form)) return; start.disabled = true;
         try {
           inputs.validate();
-          await media.prepare(inputs.mode.value === 'browser' && shareScreen.control.checked, cameraFacing.value === 'environment' ? 'environment' : 'user', inputs.camera.value, inputs.microphone.value, inputs.mode.value === 'android');
+          const screenOnly = inputs.mode.value === 'browser' && shareScreenOnly.control.checked;
+          await media.prepare(inputs.mode.value === 'browser' && (shareScreen.control.checked || screenOnly), cameraFacing.value === 'environment' ? 'environment' : 'user', inputs.camera.value, inputs.microphone.value, inputs.mode.value === 'android', screenOnly);
           if (media.usedCameraFallback()) toast(t('mediaScreenFallback'));
           const result = object(await this.api.request('POST', '/streams', {title: name.value, description: description.value, categoryId: categories.value}));
           this.stream = text(result, 'id'); this.viewerStream = this.stream; this.viewerCount = 0; this.broadcasting = true; media.connect(this.stream, true, event => this.realtime(event)); await this.loadDashboard(true);

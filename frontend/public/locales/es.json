@@ -120,7 +120,7 @@
   "uiStudioText120": "Activar cámara",
   "mediaScreenFallback": "Este navegador no permite compartir pantalla. Iniciamos el directo con la cámara y el micrófono.",
   "mediaMobileCameraHint": "Esta casilla es solo para compartir la pantalla del teléfono y no está disponible en este navegador. Para transmitir con cámara y micrófono, déjala desmarcada, pulsa Empezar transmisión y acepta los permisos cuando el navegador los solicite. Si ya los bloqueaste, permite Cámara y Micrófono en los ajustes del sitio y vuelve a cargar la página.",
-  "mediaDevicePermissionsHint": "Al comenzar, permite el acceso a cámara y micrófono. Si compartes pantalla, tu cámara aparecerá en una esquina y podrás desactivarla.",
+  "mediaDevicePermissionsHint": "Al comenzar, permite el acceso a cámara y micrófono. Si compartes pantalla con cámara, tu cámara aparecerá en una esquina y podrás desactivarla. Con «solo pantalla y micrófono» no se usa la cámara.",
   "mediaCaptureAborted": "La captura se interrumpió. Cierra otras aplicaciones que usen cámara o micrófono e inténtalo otra vez.",
   "mediaCaptureNeedsFocus": "Mantén esta página abierta y pulsa Empezar transmisión para seleccionar la captura.",
   "mediaCaptureUnsupported": "Este navegador no admite la captura solicitada. Transmite con cámara y micrófono desde un navegador actualizado.",
@@ -491,5 +491,6 @@
   "languageSpanish": "Español",
   "allLabel": "Todas",
   "viewersShort": "viendo",
-  "serverWaking": "Despertando el servidor… la primera visita después de un rato tarda unos segundos."
+  "serverWaking": "Despertando el servidor… la primera visita después de un rato tarda unos segundos.",
+  "studioScreenOnly": "Compartir solo pantalla y micrófono"
 }

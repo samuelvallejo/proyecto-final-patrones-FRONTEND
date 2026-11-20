@@ -21,7 +21,8 @@ export function browserCaptureEnvironment(): CaptureEnvironment {
   return {devices: navigator.mediaDevices, userAgent: navigator.userAgent,
     platform: navigator.platform, maxTouchPoints: navigator.maxTouchPoints};
 }
-export async function acquireSources(screen: boolean, environment: CaptureEnvironment, facing: 'user' | 'environment' = 'user', cameraDeviceId = '', microphoneDeviceId = ''): Promise<CapturedSources> {
+/** `screenOnly` shares the screen with the microphone and never opens the webcam. */
+export async function acquireSources(screen: boolean, environment: CaptureEnvironment, facing: 'user' | 'environment' = 'user', cameraDeviceId = '', microphoneDeviceId = '', screenOnly = false): Promise<CapturedSources> {
   let display: MediaStream | null = null;
   let devices: MediaStream | null = null;
   let cameraFallback = screen && !screenCaptureSupported(environment);
@@ -37,7 +38,10 @@ export async function acquireSources(screen: boolean, environment: CaptureEnviro
     }
     try {
       const android = /Android/i.test(environment.userAgent);
-      devices = await environment.devices.getUserMedia(android ? {
+      if (screenOnly && display) devices = await environment.devices.getUserMedia({
+        audio: microphoneDeviceId ? {deviceId: {exact: microphoneDeviceId}} : {echoCancellation: true, noiseSuppression: true, autoGainControl: true},
+      });
+      else devices = await environment.devices.getUserMedia(android ? {
         // Android camera drivers vary widely; let the browser choose a supported
         // capture size instead of asking for desktop-sized video up front.
         video: cameraDeviceId ? {deviceId: {exact: cameraDeviceId}} : {facingMode: {ideal: facing}},

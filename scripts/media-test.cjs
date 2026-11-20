@@ -72,6 +72,26 @@ test('Permission denial does not become a fallback and cleans up an already shar
   await assert.rejects(capture.acquireSources(true, fixture.environment), error => error.name === 'NotAllowedError');
   assert.equal(fixture.screen.stopped, true);
 });
+test('Screen and microphone only never opens the webcam', async () => {
+  const fixture = environment();
+  fixture.environment.devices.getUserMedia = async constraints => {
+    fixture.constraints.push(constraints); assert.equal(constraints.video, undefined); assert.ok(constraints.audio);
+    return new Stream([fixture.microphone]);
+  };
+  const sources = await capture.acquireSources(true, fixture.environment, 'user', '', '', true);
+  assert.equal(fixture.displayCalls.length, 1);
+  assert.equal(fixture.constraints.length, 1);
+  assert.equal(sources.display.getVideoTracks().length, 1);
+  assert.equal(sources.devices.getVideoTracks().length, 0);
+  assert.equal(sources.devices.getAudioTracks().length, 1);
+  assert.equal(sources.cameraFallback, false);
+});
+test('Screen only falls back to the camera on browsers without screen capture', async () => {
+  const fixture = environment('Mozilla/5.0 (Linux; Android 14) Chrome/130');
+  const sources = await capture.acquireSources(true, fixture.environment, 'user', '', '', true);
+  assert.equal(sources.cameraFallback, true); assert.equal(sources.display, null);
+  assert.equal(sources.devices.getVideoTracks().length, 1);
+});
 test('Canceling the desktop screen chooser does not open camera and microphone', async () => {
   const fixture = environment();
   fixture.environment.devices.getDisplayMedia = async () => {throw {name: 'NotAllowedError'};};

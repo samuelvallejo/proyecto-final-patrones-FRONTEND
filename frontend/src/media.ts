@@ -112,12 +112,12 @@ function awaitVideo(): void {
     if (!connected) useRelay();
   }, 8000);
 }
-async function prepare(screen: boolean, facing: 'user' | 'environment' = 'user', cameraDeviceId = '', microphoneDeviceId = '', nativeScreen = false): Promise<void> {
+async function prepare(screen: boolean, facing: 'user' | 'environment' = 'user', cameraDeviceId = '', microphoneDeviceId = '', nativeScreen = false, screenOnly = false): Promise<void> {
   if (nativeScreen) {stop(); state.stopping = false; await nativeCapture.prepare(); state.host = true; return;}
   if (!navigator.mediaDevices?.getUserMedia) throw new Error(t('mediaText02'));
   stop(); state.stopping = false;
   try {
-    const captured = await acquireSources(screen, browserCaptureEnvironment(), facing, cameraDeviceId, microphoneDeviceId);
+    const captured = await acquireSources(screen, browserCaptureEnvironment(), facing, cameraDeviceId, microphoneDeviceId, screenOnly);
     state.captures.push(captured.devices);
     if (captured.display) state.captures.push(captured.display);
     state.microphone = captured.devices.getAudioTracks()[0] ?? null;
@@ -427,7 +427,7 @@ function stop(): void {
 }
 export const media = {
   configure(api: string, token: string, config: MediaConfig): void {state.api = api.replace(/\/$/, ''); state.token = token; state.config = config;},
-  prepare: async (screen: boolean, facing: 'user' | 'environment' = 'user', cameraDeviceId = '', microphoneDeviceId = '', nativeScreen = false) => {finalizing=false; archiveBlocked=false; await prepare(screen, facing, cameraDeviceId, microphoneDeviceId, nativeScreen);},
+  prepare: async (screen: boolean, facing: 'user' | 'environment' = 'user', cameraDeviceId = '', microphoneDeviceId = '', nativeScreen = false, screenOnly = false) => {finalizing=false; archiveBlocked=false; await prepare(screen, facing, cameraDeviceId, microphoneDeviceId, nativeScreen, screenOnly);},
   connect, attach, stop, captions, playback, share, messageForError, switchCamera, finalizeRecording,
   nativeScreenActive(): boolean {return nativeCapture.active();},
   cameraFacing(): 'user' | 'environment' {return state.facing;},
