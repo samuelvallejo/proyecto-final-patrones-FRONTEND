@@ -339,6 +339,12 @@ html[data-theme="dark"] .tag.suspended-tag{background:#310000;border-color:#7d00
 html[data-theme="dark"] .tag.live-tag{background:#330008;border-color:#830016;color:#d8637a}
 html[data-theme="dark"] .admin-facts dt{color:#879bbe}
 html[data-theme="dark"] .role-banner.admin-role{border-color:#002e8b;background:#001232;color:#b8c7e8}
+html[data-theme="dark"] .announcement-banner{border:1px solid #002e8b;background:linear-gradient(90deg,#001434,#00112f);color:#b8c7e8}
+html[data-theme="dark"] .announcement-banner.important{border-color:#b65c00;background:linear-gradient(90deg,#382000,#311c00);color:#eed8bd}
+html[data-theme="dark"] .announcement-banner>svg{color:#2f6bff}
+html[data-theme="dark"] .announcement-banner.important>svg{color:#daa76c}
+html[data-theme="dark"] .announcement-close{background:transparent}
+html[data-theme="dark"] .announcement-close:hover{background:#0000000f}
 /* exceptions: buttons that sit on the bright hero keep their light look */
 html[data-theme="dark"] .home-hero .primary{background:#fff;color:#1553d6}
 html[data-theme="dark"] .home-hero .primary:hover{background:#eaf3ff}

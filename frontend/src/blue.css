@@ -154,3 +154,15 @@ button:focus-visible,a:focus-visible{outline-color:var(--azure)}input:focus,text
 .admin-section{padding:0 24px 22px}.admin-section .panel-heading{margin:0 -24px;padding:21px 24px 8px}
 .admin-section>p.muted{margin:0 0 4px}
 .admin-section .simple-row{padding-left:0;padding-right:0}
+
+/* Global announcement */
+.announcement-banner{display:flex;align-items:flex-start;gap:12px;margin:0 34px 4px;padding:13px 16px;border:1px solid #b9d0ff;border-radius:16px;background:linear-gradient(90deg,#eaf2ff,#f4f8ff);color:#1a2b4f}
+.announcement-banner.important{border-color:#ffc58a;background:linear-gradient(90deg,#fff3e3,#fff9f1);color:#5a3200}
+.announcement-banner>svg{flex:0 0 auto;width:20px;height:20px;margin-top:2px;color:#2f6bff}.announcement-banner.important>svg{color:#e07800}
+.announcement-banner>div{flex:1;min-width:0}.announcement-banner strong{display:block;font-size:12px;letter-spacing:.06em;text-transform:uppercase}
+.announcement-banner p{margin:2px 0 0;font-size:14px;line-height:1.45;overflow-wrap:anywhere}
+.announcement-close{flex:0 0 auto;display:grid;place-items:center;width:28px;height:28px;border:0;border-radius:8px;background:transparent;color:inherit;cursor:pointer}
+.announcement-close:hover{background:#0000000f}.announcement-close svg{width:16px;height:16px}
+.auth-notices{display:flex;flex-direction:column;gap:10px;margin-bottom:12px}.auth-notices:empty{display:none}.auth-notices .announcement-banner{margin:0}
+.admin-section textarea{width:100%}
+@media(max-width:760px){.announcement-banner{margin:0 16px 4px}}

@@ -25,6 +25,10 @@ const adminScreens: Screen[] = ['studio', 'moderation', 'clips', 'assistant', 's
 const sessionHintKey = 'streamguard.hasSession';
 function hasSessionHint(): boolean {try {return localStorage.getItem(sessionHintKey) === '1';} catch {return true;}}
 function setSessionHint(value: boolean): void {try {if (value) localStorage.setItem(sessionHintKey, '1'); else localStorage.removeItem(sessionHintKey);} catch {/* storage unavailable */}}
+/** The last announcement this browser closed; a new announcement has a new id and shows again. */
+const dismissedKey = 'streamguard.dismissedAnnouncement';
+function dismissedAnnouncement(): string {try {return localStorage.getItem(dismissedKey) ?? '';} catch {return '';}}
+function dismissAnnouncement(id: string): void {try {localStorage.setItem(dismissedKey, id);} catch {/* storage unavailable */}}
 function eventWhen(value: string): string {
   const date = new Date(value); if (Number.isNaN(date.getTime())) return '';
   const time = date.toLocaleTimeString('es-CO', {hour: 'numeric', minute: '2-digit'});
@@ -44,6 +48,8 @@ export class StreamGuardApp {
   private content = panel('page-content');
   private user: Row | null = null;
   private config: Row = {};
+  /** Maintenance, registration and the global announcement, as the server reports them. */
+  private platform: Row = {};
   private dashboard: Row = {};
   private categories: Row[] = [];
   private following: Row[] = [];
@@ -87,7 +93,7 @@ export class StreamGuardApp {
     this.api.setToken('');
     // Wake a sleeping server right away; the login form does not need to wait for it.
     const ping = () => {void fetch('/api/ping', {cache: 'no-store'}).catch(() => {});};
-    ping();
+    ping(); void this.loadPlatformStatus();
     // The free host sleeps after ~10 idle minutes. While the app is visible, a tiny ping every
     // 4 minutes keeps it awake (for example during a demo); hidden tabs stop pinging.
     window.setInterval(() => {if (document.visibilityState === 'visible') ping();}, 240000);
@@ -108,7 +114,7 @@ export class StreamGuardApp {
   /** Profile, configuration, categories and followed channels in a single round trip. */
   private async bootstrap(): Promise<void> {
     const data = object(await this.api.request('GET', '/bootstrap', undefined, true));
-    this.user = object(data.user); this.config = object(data.config); this.categories = rows(data.categories); this.following = rows(data.following);
+    this.user = object(data.user); this.config = object(data.config); this.platform = object(data.platform); this.categories = rows(data.categories); this.following = rows(data.following);
     setSessionHint(true); this.configureMedia();
   }
   private async loadFollowing(): Promise<void> {
@@ -169,7 +175,8 @@ export class StreamGuardApp {
       account.append(bell, badge);
     }
     header.append(menu, find, account); this.content = panel('page-content'); this.content.id = 'page-content'; this.content.setAttribute('role', 'main'); this.content.tabIndex = -1;
-    main.append(header, this.content); this.root.append(skipLink, side, main);
+    const notice = this.announcementBanner(); main.append(header); if (notice) main.append(notice);
+    main.append(this.content); this.root.append(skipLink, side, main);
     if (this.broadcasting && this.screen !== 'studio') this.floatingPlayer();
   }
   private navButton(key: Screen, label: string, glyph: string): HTMLButtonElement {
@@ -384,6 +391,7 @@ export class StreamGuardApp {
   }
   private authView(register: boolean): void {
     this.title(t('welcomeEyebrow'), register ? t('uiAuthViewText38') : t('uiAuthViewText39'), register ? t('uiAuthViewText40') : t('uiAuthViewText41'));
+    const notices = panel('auth-notices'); if (register) notices.dataset.register = '1'; this.fillAuthNotices(notices); this.content.append(notices);
     const card = panel('form-card auth-card'), username = input(t('uiAuthViewText42')), email = input(t('uiAuthViewText43')), password = input(register ? t('uiAuthViewText44') : t('uiAuthViewText47'));
     email.type = 'email'; email.autocomplete = 'email'; password.type = 'password'; password.autocomplete = register ? 'new-password' : 'current-password';
     password.minLength = register ? 10 : 0;
@@ -1034,6 +1042,25 @@ export class StreamGuardApp {
     actions.append(button(t('previousPart'),'button subtle small',()=>{if (index>0) {index--;load();}}),button(t('nextPart'),'button subtle small',()=>{if (index+1<parts.length) {index++;load();}}),button(t('closeWindow'),'button subtle small',modal.close));
     modal.form.append(video,status,actions); modal.element.addEventListener('close',()=>{video.pause();video.removeAttribute('src');video.load();}); load();
   }
+  /** The active global announcement as a closable banner, unless this browser already closed it. */
+  private announcementBanner(): HTMLElement | null {
+    const notice = object(this.platform.announcement), id = text(notice, 'id'), message = text(notice, 'message');
+    if (!message || dismissedAnnouncement() === id) return null;
+    const important = text(notice, 'level') === 'IMPORTANT';
+    const banner = panel(`announcement-banner${important ? ' important' : ''}`); banner.setAttribute('role', 'status');
+    banner.innerHTML = `${icon('bell')}<div><strong>${escape(t(important ? 'announcementImportant' : 'announcementInfo'))}</strong><p>${escape(message)}</p></div>`;
+    const close = button('', 'announcement-close', () => {dismissAnnouncement(id); banner.remove();});
+    close.innerHTML = icon('close'); close.setAttribute('aria-label', t('announcementDismiss')); banner.append(close);
+    return banner;
+  }
+  /** Guests learn about the platform from the public status, without waiting for it to draw the form. */
+  private async loadPlatformStatus(): Promise<void> {
+    try {this.platform = object(await this.api.request('GET', '/platform/status', undefined, true));} catch {return;}
+    for (const box of document.querySelectorAll<HTMLElement>('.auth-notices')) this.fillAuthNotices(box);
+  }
+  private fillAuthNotices(box: HTMLElement): void {
+    box.replaceChildren(); const banner = this.announcementBanner(); if (banner) box.append(banner);
+  }
   private isAdmin(): boolean {return text(this.user, 'role') === 'ADMIN';}
   /** A yes/no question in the app's own dialog; closing it counts as "no". */
   private confirmAction(heading: string, detail: string, label: string): Promise<boolean> {
@@ -1056,6 +1083,35 @@ export class StreamGuardApp {
     for (const [label, key] of [['adminFigureUsers', 'users'], ['adminFigureAdmins', 'admins'], ['adminFigureSuspended', 'suspended'], ['adminFigureChannels', 'channels'], ['adminFigureLive', 'live'], ['adminFigureStreams', 'streams'], ['adminFigureMessages', 'messages'], ['adminFigurePending', 'pending_reviews'], ['adminFigureClips', 'clips'], ['adminFigureEvents', 'upcoming_events']] as const)
       figures.append(html(`<article class="metric"><span>${escape(t(label))}</span><strong>${escape(text(totals, key) || '0')}</strong></article>`));
     this.content.append(figures);
+    this.platform = object(object(overview).platform);
+    const current = object(this.platform.announcement), currentImportant = text(current, 'level') === 'IMPORTANT';
+    const announce = panel('surface admin-section'); announce.append(html(`<div class="panel-heading"><h2>${escape(t('adminAnnouncementTitle'))}</h2></div><p class="muted">${escape(t('adminAnnouncementHelp'))}</p>`));
+    if (text(current, 'message')) {
+      const active = panel('admin-row');
+      active.append(html(`<div class="admin-row-main"><span class="tag ${currentImportant ? 'live-tag' : 'admin-tag'}">${escape(t(currentImportant ? 'announcementImportant' : 'announcementInfo'))}</span><div><strong>${escape(text(current, 'message'))}</strong><small class="muted">${escape(t('adminAnnouncementActive'))}</small></div></div>`));
+      const remove = button(t('adminAnnouncementRemove'), 'button danger small', async () => {
+        if (!await this.confirmAction(t('adminAnnouncementRemoveTitle'), t('adminAnnouncementRemoveDetail'), t('adminAnnouncementRemove'))) return;
+        await this.api.request('DELETE', '/admin/announcement'); this.platform = {...this.platform, announcement: null}; toast(t('adminAnnouncementRemoved')); this.route('admin');
+      });
+      const removeRow = panel('action-row'); removeRow.append(remove); active.append(removeRow); announce.append(active);
+    }
+    const message = area(t('adminAnnouncementPlaceholder')); message.maxLength = 280; message.rows = 3;
+    const level = select([[t('announcementInfo'), 'INFO'], [t('announcementImportant'), 'IMPORTANT']], 'INFO');
+    const send = checkbox(t('adminAnnouncementNotify'), true);
+    const counter = document.createElement('small'); counter.className = 'muted';
+    const count = () => {counter.textContent = `${message.value.length} / 280`;}; count(); message.addEventListener('input', count);
+    const publish = button(t(text(current, 'message') ? 'adminAnnouncementReplace' : 'adminAnnouncementPublish'), 'button primary', async () => {
+      if (!message.value.trim()) {message.focus(); return;}
+      publish.disabled = true;
+      try {
+        const result = object(await this.api.request('POST', '/admin/announcement', {message: message.value.trim(), level: level.value, sendNotification: send.control.checked}));
+        this.platform = object(result.platform);
+        toast(send.control.checked ? t('adminAnnouncementSent').replace('{count}', text(result, 'notified')) : t('adminAnnouncementPublished')); this.route('admin');
+      } finally {publish.disabled = false;}
+    });
+    const announceRow = panel('form-row'); announceRow.append(field(t('adminAnnouncementLevel'), level));
+    announce.append(field(t('adminAnnouncementMessage'), message), counter, announceRow, send.element, publish);
+    this.content.append(announce);
 
     const technical = panel('surface admin-section'); technical.append(html(`<div class="panel-heading"><h2>${escape(t('adminSystemTitle'))}</h2></div><p class="muted">${escape(t('adminSystemHelp'))}</p>`));
     const yes = (value: boolean) => value ? t('adminYes') : t('adminNo');
@@ -1124,6 +1180,7 @@ export class StreamGuardApp {
       ADMIN_GRANT: t('adminActionGrant'), ADMIN_REVOKE: t('adminActionRevoke'), ADMIN_SUSPEND: t('adminActionSuspend'),
       ADMIN_REACTIVATE: t('adminActionReactivate'), ADMIN_END_STREAM: t('adminActionEndStream'),
       ADMIN_CATEGORY_CREATE: t('adminActionCategoryCreate'), ADMIN_CATEGORY_RENAME: t('adminActionCategoryRename'),
+      ADMIN_ANNOUNCE: t('adminActionAnnounce'), ADMIN_ANNOUNCE_REMOVE: t('adminActionAnnounceRemove'),
     };
     for (const entry of entries) {
       const when = new Date(text(entry, 'created_at')).toLocaleString('es-CO', {day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit'});
