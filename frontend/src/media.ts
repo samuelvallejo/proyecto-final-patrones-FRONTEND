@@ -1,7 +1,7 @@
 import {t, type TranslationKey} from './i18n';
 import {liveEvent, object, text, type Json, type LiveEvent, type MediaConfig} from './contracts';
 import {relay} from './relay';
-import {acquireSources, browserCaptureEnvironment, mediaErrorName, screenCaptureSupported} from './capture';
+import {CaptureService} from './capture';
 import {compositeVideo, type CompositeVideo} from './compositor';
 import {connectionTicket} from './api';
 import {beginActivity} from './activity';
@@ -57,7 +57,7 @@ export function messageForError(error: unknown): string {
     OverconstrainedError: 'mediaConstraintsFailed', AbortError: 'mediaCaptureAborted',
     InvalidStateError: 'mediaCaptureNeedsFocus', NotSupportedError: 'mediaCaptureUnsupported', TypeError: 'mediaCaptureUnsupported',
   };
-  const name = mediaErrorName(error);
+  const name = CaptureService.errorName(error);
   if (name === 'NotAllowedError' && /Android/i.test(navigator.userAgent)) return t('mediaAndroidPermissionDenied');
   const key = keys[name]; if (key) return t(key);
   if (error instanceof Error) {
@@ -117,7 +117,7 @@ async function prepare(screen: boolean, facing: 'user' | 'environment' = 'user',
   if (!navigator.mediaDevices?.getUserMedia) throw new Error(t('mediaText02'));
   stop(); state.stopping = false;
   try {
-    const captured = await acquireSources(screen, browserCaptureEnvironment(), facing, cameraDeviceId, microphoneDeviceId, screenOnly);
+    const captured = await CaptureService.browser().acquire({screen, facing, cameraDeviceId, microphoneDeviceId, screenOnly});
     state.captures.push(captured.devices);
     if (captured.display) state.captures.push(captured.display);
     state.microphone = captured.devices.getAudioTracks()[0] ?? null;
@@ -192,7 +192,7 @@ async function switchCamera(): Promise<void> {
     if (generation !== state.generation) return;
     try {await install(await navigator.mediaDevices.getUserMedia({audio: false, video: {facingMode: {ideal: oldFacing}}}), oldFacing);}
     catch {state.camera = null;}
-    throw new Error(['NotFoundError', 'OverconstrainedError'].includes(mediaErrorName(error)) ? t('mediaOtherCameraMissing') : messageForError(error));
+    throw new Error(['NotFoundError', 'OverconstrainedError'].includes(CaptureService.errorName(error)) ? t('mediaOtherCameraMissing') : messageForError(error));
   } finally {if (generation === state.generation) state.switchingCamera = false;}
 }
 function createPeer(id: string): RTCPeerConnection {
@@ -446,7 +446,7 @@ export const media = {
     return state.camera.enabled;
   },
   usedCameraFallback(): boolean {return state.cameraFallback;},
-  screenSharingSupported(): boolean {return Boolean(navigator.mediaDevices) && screenCaptureSupported(browserCaptureEnvironment());},
+  screenSharingSupported(): boolean {return Boolean(navigator.mediaDevices) && CaptureService.browser().screenSupported();},
 };
 window.StreamMedia = media;
 window.addEventListener('beforeunload', stop);

@@ -1,5 +1,5 @@
 import {panel, field, button, select} from './dom';
-import {browserCaptureEnvironment, mobileCaptureClient} from './capture';
+import {CaptureService} from './capture';
 import {nativeCapture} from './native-capture';
 import {t} from './i18n';
 
@@ -9,7 +9,7 @@ export class StudioInputs {
   readonly camera = select([[t('captureDefaultDevice'), '']]);
   readonly microphone = select([[t('captureDefaultDevice'), '']]);
   readonly mode = select([[t('captureBrowserMode'), 'browser']]);
-  readonly mobile = mobileCaptureClient(browserCaptureEnvironment());
+  readonly mobile = CaptureService.browser().isMobile();
   constructor() {
     const hint = panel('capture-hint');
     if (nativeCapture.available()) {

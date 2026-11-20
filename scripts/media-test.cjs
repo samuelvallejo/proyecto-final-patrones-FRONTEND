@@ -39,7 +39,7 @@ function environment(userAgent = 'Desktop Chrome') {
 }
 test('Android with an exposed but unsupported screen API requests camera and microphone together', async () => {
   const fixture = environment('Mozilla/5.0 (Linux; Android 14) Chrome/130');
-  const sources = await capture.acquireSources(true, fixture.environment);
+  const sources = await new capture.CaptureService(fixture.environment).acquire({screen: true});
   assert.equal(fixture.displayCalls.length, 0);
   assert.equal(sources.cameraFallback, true);
   assert.equal(sources.display, null);
@@ -50,11 +50,11 @@ test('Android with an exposed but unsupported screen API requests camera and mic
 test('iPad desktop mode does not offer unsupported screen capture', () => {
   const fixture = environment('Mozilla/5.0 (Macintosh) Safari');
   fixture.environment.platform = 'MacIntel'; fixture.environment.maxTouchPoints = 5;
-  assert.equal(capture.screenCaptureSupported(fixture.environment), false);
+  assert.equal(new capture.CaptureService(fixture.environment).screenSupported(), false);
 });
 test('A named DOM failure is recognized without relying on Error inheritance', () => {
-  assert.equal(capture.mediaErrorName({name: 'NotAllowedError'}), 'NotAllowedError');
-  assert.equal(capture.mediaErrorName(null), '');
+  assert.equal(capture.CaptureService.errorName({name: 'NotAllowedError'}), 'NotAllowedError');
+  assert.equal(capture.CaptureService.errorName(null), '');
 });
 test('Device constraints are relaxed once when a phone camera rejects the preferred settings', async () => {
   const fixture = environment('Android');
@@ -64,12 +64,12 @@ test('Device constraints are relaxed once when a phone camera rejects the prefer
     assert.equal(constraints.video.facingMode.ideal, 'user'); assert.equal(constraints.audio, true);
     return new Stream([fixture.camera, fixture.microphone]);
   };
-  await capture.acquireSources(false, fixture.environment); assert.equal(calls, 2);
+  await new capture.CaptureService(fixture.environment).acquire({screen: false}); assert.equal(calls, 2);
 });
 test('Permission denial does not become a fallback and cleans up an already shared screen', async () => {
   const fixture = environment();
   fixture.environment.devices.getUserMedia = async () => {throw {name: 'NotAllowedError'};};
-  await assert.rejects(capture.acquireSources(true, fixture.environment), error => error.name === 'NotAllowedError');
+  await assert.rejects(new capture.CaptureService(fixture.environment).acquire({screen: true}), error => error.name === 'NotAllowedError');
   assert.equal(fixture.screen.stopped, true);
 });
 test('Screen and microphone only never opens the webcam', async () => {
@@ -78,7 +78,7 @@ test('Screen and microphone only never opens the webcam', async () => {
     fixture.constraints.push(constraints); assert.equal(constraints.video, undefined); assert.ok(constraints.audio);
     return new Stream([fixture.microphone]);
   };
-  const sources = await capture.acquireSources(true, fixture.environment, 'user', '', '', true);
+  const sources = await new capture.CaptureService(fixture.environment).acquire({screen: true, facing: 'user', cameraDeviceId: '', microphoneDeviceId: '', screenOnly: true});
   assert.equal(fixture.displayCalls.length, 1);
   assert.equal(fixture.constraints.length, 1);
   assert.equal(sources.display.getVideoTracks().length, 1);
@@ -88,14 +88,14 @@ test('Screen and microphone only never opens the webcam', async () => {
 });
 test('Screen only falls back to the camera on browsers without screen capture', async () => {
   const fixture = environment('Mozilla/5.0 (Linux; Android 14) Chrome/130');
-  const sources = await capture.acquireSources(true, fixture.environment, 'user', '', '', true);
+  const sources = await new capture.CaptureService(fixture.environment).acquire({screen: true, facing: 'user', cameraDeviceId: '', microphoneDeviceId: '', screenOnly: true});
   assert.equal(sources.cameraFallback, true); assert.equal(sources.display, null);
   assert.equal(sources.devices.getVideoTracks().length, 1);
 });
 test('Canceling the desktop screen chooser does not open camera and microphone', async () => {
   const fixture = environment();
   fixture.environment.devices.getDisplayMedia = async () => {throw {name: 'NotAllowedError'};};
-  await assert.rejects(capture.acquireSources(true, fixture.environment));
+  await assert.rejects(new capture.CaptureService(fixture.environment).acquire({screen: true}));
   assert.equal(fixture.constraints.length, 0);
 });
 test('A computer without webcam can still share its screen and microphone', async () => {
@@ -106,7 +106,7 @@ test('A computer without webcam can still share its screen and microphone', asyn
     assert.equal(constraints.audio, true); assert.equal(constraints.video, undefined);
     return new Stream([fixture.microphone]);
   };
-  const sources = await capture.acquireSources(true, fixture.environment);
+  const sources = await new capture.CaptureService(fixture.environment).acquire({screen: true});
   assert.equal(sources.display.getVideoTracks()[0], fixture.screen);
   assert.equal(sources.devices.getAudioTracks()[0], fixture.microphone);
   assert.equal(calls, 2);
@@ -145,14 +145,14 @@ test('Mobile camera can start without MediaRecorder and both device toggles work
 
 test('OBS and virtual audio selections are passed as exact device IDs', async () => {
   const fixture = environment();
-  await capture.acquireSources(false, fixture.environment, 'user', 'obs-device', 'virtual-audio');
+  await new capture.CaptureService(fixture.environment).acquire({screen: false, facing: 'user', cameraDeviceId: 'obs-device', microphoneDeviceId: 'virtual-audio'});
   assert.equal(fixture.constraints[0].video.deviceId.exact, 'obs-device');
   assert.equal(fixture.constraints[0].audio.deviceId.exact, 'virtual-audio');
 });
 test('A missing selected OBS input never opens a different camera', async () => {
   const fixture = environment(); let calls = 0;
   fixture.environment.devices.getUserMedia = async () => {calls++; throw {name: 'NotFoundError'};};
-  await assert.rejects(capture.acquireSources(false, fixture.environment, 'user', 'missing-obs'), error => error.name === 'NotFoundError');
+  await assert.rejects(new capture.CaptureService(fixture.environment).acquire({screen: false, facing: 'user', cameraDeviceId: 'missing-obs'}), error => error.name === 'NotFoundError');
   assert.equal(calls, 1);
 });
 test('Screen sharing includes webcam, hides its overlay when disabled, and releases every track', async () => {

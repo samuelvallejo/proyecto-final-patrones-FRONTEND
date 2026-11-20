@@ -2,9 +2,9 @@ import './styles.css';
 import {StreamGuardApp} from './app';
 import {t} from './i18n';
 import {toast} from './dom';
-import {initTheme} from './theme';
+import {theme} from './theme';
 
-initTheme();
+theme.init();
 
 document.title = t('pageTitle');
 document.querySelector('meta[name="description"]')?.setAttribute('content', t('pageDescription'));

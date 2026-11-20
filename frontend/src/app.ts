@@ -12,11 +12,11 @@ import './moderation-presets.css';
 import './light.css';
 import './blue.css';
 import './dark.css';
-import {toggleTheme, syncToggle} from './theme';
+import {theme} from './theme';
 import {GeminiChatView} from './gemini-chat';
-import {viewerCounter, viewerNumber, updateViewerCounters} from './viewer-count';
+import {ViewerCounter} from './viewer-count';
 import {StudioInputs} from './studio-inputs';
-import {browserCaptureEnvironment, mobileCaptureClient} from './capture';
+import {CaptureService} from './capture';
 
 type Screen = 'explore' | 'studio' | 'login' | 'register' | 'watch' | 'public-clips' | 'account' | 'moderation' | 'clips' | 'assistant' | 'gemini-chat' | 'settings' | 'admin';
 const adminScreens: Screen[] = ['studio', 'moderation', 'clips', 'assistant', 'settings'];
@@ -229,7 +229,7 @@ export class StreamGuardApp {
   private floatingPlayer(): void {
     const floating=panel('floating-player');
     floating.append(html(`<div class="floating-heading"><span class="status-dot"></span><strong>${escape(t('floatingLive'))}</strong></div><video id="live-video" autoplay playsinline muted></video>`));
-    floating.querySelector('.floating-heading')?.append(viewerCounter(this.viewerCount));
+    floating.querySelector('.floating-heading')?.append(new ViewerCounter(this.viewerCount).element);
     if (media.nativeScreenActive()) {
       const video = floating.querySelector('video'); if (video) video.style.display = 'none';
       const status = panel('capture-hint'); status.textContent = t('nativeScreenPreview'); floating.append(status);
@@ -254,8 +254,8 @@ export class StreamGuardApp {
   }
   /** Sun/moon button; it is the same control on the login screen and in the top bar. */
   private themeToggle(): HTMLButtonElement {
-    const control = button('', 'button icon-button theme-toggle', () => toggleTheme());
-    syncToggle(control); return control;
+    const control = button('', 'button icon-button theme-toggle', () => theme.toggle());
+    theme.syncToggle(control); return control;
   }
   private categoryOptions(): Array<[string, string]> {
     return [[t('allLabel'), ''], ...this.categories.map((row): [string, string] => [text(row, 'name'), text(row, 'slug')])];
@@ -547,8 +547,8 @@ export class StreamGuardApp {
   private rememberViewers(stream: Row): void {
     const id = text(stream, 'id'); if (!id) return;
     if (this.viewerStream !== id || typeof stream.viewers === 'number') {
-      this.viewerStream = id; this.viewerCount = text(stream, 'status') === 'LIVE' ? viewerNumber(stream.viewers) : 0;
-      updateViewerCounters(this.root, this.viewerCount);
+      this.viewerStream = id; this.viewerCount = text(stream, 'status') === 'LIVE' ? ViewerCounter.parse(stream.viewers) : 0;
+      ViewerCounter.updateAll(this.root, this.viewerCount);
     }
   }
   private studio(): void {
@@ -565,7 +565,7 @@ export class StreamGuardApp {
     if (live) {
       const heading = left.querySelector('.panel-heading'), status = heading?.querySelector('.tag');
       const indicators = panel('live-heading-status'); if (status) indicators.append(status);
-      indicators.append(viewerCounter(this.viewerCount)); heading?.append(indicators);
+      indicators.append(new ViewerCounter(this.viewerCount).element); heading?.append(indicators);
     }
     if (this.broadcasting) {
       const actions = panel('action-row');
@@ -604,7 +604,7 @@ export class StreamGuardApp {
         switchCamera.setAttribute('aria-label', switchCamera.textContent ?? '');
       };
       updateCameraLabel(); switchCamera.disabled = !media.cameraAvailable();
-      if (!mobileCaptureClient(browserCaptureEnvironment()) || media.nativeScreenActive()) switchCamera.style.display = 'none';
+      if (!CaptureService.browser().isMobile() || media.nativeScreenActive()) switchCamera.style.display = 'none';
       actions.append(button(t('uiStudioText82'), 'button primary', async () => {await this.api.request('POST', `/streams/${this.stream}/highlights`, {source: 'MANUAL', reason: t('uiStudioText83')}); toast(t('uiStudioText84'));}),
         microphone, camera, switchCamera, button(t('uiStudioText85'), 'button subtle', async () => {await media.captions(); toast(t('uiStudioText86'));}), button(t('uiStudioText87'), 'button danger', () => this.finish()));
       left.append(actions);
@@ -674,7 +674,7 @@ export class StreamGuardApp {
     const layout = panel('watch-grid'), player = panel('surface');
     player.append(html("<div class='video-stage'><video id='live-video' autoplay playsinline muted controls></video><div class='video-placeholder' id='video-placeholder'>" + icon('video') + t('uiWatchText108')));
     const actions = panel('action-row');
-    actions.append(viewerCounter(this.viewerCount), button(t('uiWatchText109'), 'button primary small', async () => {
+    actions.append(new ViewerCounter(this.viewerCount).element, button(t('uiWatchText109'), 'button primary small', async () => {
       if (!this.user) {toast(t('uiWatchText110'), true); return;}
       await this.api.request('POST', `/channels/${text(stream, 'channel_id')}/follow`, {}); toast(t('uiWatchText111'));
     }));
@@ -850,14 +850,14 @@ export class StreamGuardApp {
     switch (event.type) {
       case 'message': this.appendMessage(object(event.message)); break;
       case 'presence':
-        this.viewerStream = this.stream; this.viewerCount = viewerNumber(event.viewers);
-        updateViewerCounters(this.root, this.viewerCount);
+        this.viewerStream = this.stream; this.viewerCount = ViewerCounter.parse(event.viewers);
+        ViewerCounter.updateAll(this.root, this.viewerCount);
         if (event.hostOnline === false) toast(t('uiHostDisconnected'));
         break;
       case 'notice': toast(event.body ?? ''); break;
       case 'error': toast(typeof event.message === 'string' ? event.message : t('mediaEventFailed'), true); break;
       case 'ended':
-        this.viewerCount = 0; updateViewerCounters(this.root, 0);
+        this.viewerCount = 0; ViewerCounter.updateAll(this.root, 0);
         this.broadcasting = false; toast(typeof event.message === 'string' ? event.message : t('uiFinishText104')); media.stop();
         this.root.querySelector('.floating-player')?.remove();
         if (this.screen === 'watch') this.showEndedLive();
