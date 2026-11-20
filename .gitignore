@@ -6,3 +6,6 @@ frontend/dist/
 .vercel/
 .firebase/
 *.log
+
+# Screenshots written by failed browser tests
+artifacts/
