@@ -95,6 +95,7 @@ export function icon(key: string): string {
     book: "<path d='M4 5a2 2 0 0 1 2-2h13v15H6a2 2 0 0 0-2 2ZM4 20a2 2 0 0 0 2 2h13'/>",
     chat: "<path d='M4 5h16v11H9l-5 4Z'/><path d='M8 9h8M8 12h5'/>",
     arrow: "<path d='M5 12h14M13 6l6 6-6 6'/>",
+    gauge: "<path d='M12 14l4-4'/><path d='M3.3 19a9 9 0 1 1 17.4 0'/><circle cx='12' cy='14' r='1.5'/>",
     sun: "<circle cx='12' cy='12' r='4'/><path d='M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4'/>",
     moon: "<path d='M20 14.5A8 8 0 0 1 9.5 4 8 8 0 1 0 20 14.5Z'/>",
     plus: "<path d='M12 5v14M5 12h14'/>",

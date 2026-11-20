@@ -18,7 +18,7 @@ import {viewerCounter, viewerNumber, updateViewerCounters} from './viewer-count'
 import {StudioInputs} from './studio-inputs';
 import {browserCaptureEnvironment, mobileCaptureClient} from './capture';
 
-type Screen = 'explore' | 'studio' | 'login' | 'register' | 'watch' | 'public-clips' | 'account' | 'moderation' | 'clips' | 'assistant' | 'gemini-chat' | 'settings';
+type Screen = 'explore' | 'studio' | 'login' | 'register' | 'watch' | 'public-clips' | 'account' | 'moderation' | 'clips' | 'assistant' | 'gemini-chat' | 'settings' | 'admin';
 const adminScreens: Screen[] = ['studio', 'moderation', 'clips', 'assistant', 'settings'];
 
 /** Non-secret flag: "this browser probably has a session", so guests see the login form instantly. */
@@ -131,6 +131,10 @@ export class StreamGuardApp {
     const navigation = document.createElement('nav'); navigation.id = 'main-navigation'; navigation.setAttribute('aria-label', t('mainNavigationLabel'));
     second.insertBefore(this.navButton('gemini-chat', t('geminiChatNavigation'), 'spark'), second.lastElementChild);
     navigation.append(html(t('uiShellText07')), first, html(t('uiShellText09')), second);
+    if (this.isAdmin()) {
+      const administration = panel('nav-list'); administration.append(this.navButton('admin', t('adminNav'), 'gauge'));
+      navigation.append(html(`<p class='nav-label nav-second'>${escape(t('adminNavLabel'))}</p>`), administration);
+    }
     const sideCategories = panel('side-categories');
     for (const [label, slug] of this.categoryOptions()) {
       const chip = button(label, `side-category${this.category === slug ? ' selected' : ''}`, () => {this.category = slug; this.route('explore');});
@@ -160,7 +164,7 @@ export class StreamGuardApp {
     const themeButton = this.themeToggle(); account.append(themeButton);
     if (!this.user) account.append(button(t('uiShellText18'), 'button primary small', () => this.route('login')));
     else {
-      const badge = button(text(this.user, 'username').slice(0, 1).toUpperCase(), 'avatar', () => this.route('account')); badge.setAttribute('aria-label', t('myAccount'));
+      const badge = button(text(this.user, 'username').slice(0, 1).toUpperCase(), this.isAdmin() ? 'avatar admin-avatar' : 'avatar', () => this.route('account')); badge.setAttribute('aria-label', t('myAccount')); badge.title = t(this.isAdmin() ? 'roleAdmin' : 'roleUser');
       const bell = button(t('uiShellText19'), 'button icon-button', () => this.notifications()); bell.innerHTML = icon('bell'); bell.setAttribute('aria-label', t('uiShellText19'));
       account.append(bell, badge);
     }
@@ -175,6 +179,7 @@ export class StreamGuardApp {
   }
   private route(next: Screen): void {
     if (!this.user && !['login','register'].includes(next)) next='login';
+    if (next === 'admin' && !this.isAdmin()) next = 'explore';
     this.clearCollaboration();
     window.clearInterval(this.sharedLocationPoll); this.sharedLocationPoll=0;
     if (!this.broadcasting && this.screen === 'watch') media.stop();
@@ -194,6 +199,7 @@ export class StreamGuardApp {
       this.title(t('geminiChatEyebrow'), t('geminiChatTitle'), t('geminiChatDescription'));
       const chat = panel('gemini-chat-container'); this.content.append(chat); await this.geminiChat.mount(chat); return;
     }
+    if (this.screen === 'admin') return this.adminPanel();
     if (!this.channel) {
       const epoch = this.epoch; const channels = rows(await this.api.request('GET', '/channels/mine'));
       if (epoch !== this.epoch) return;
@@ -848,7 +854,7 @@ export class StreamGuardApp {
     const queue = rows(this.dashboard.queue), list = panel('surface moderation-list'); list.append(html(t('uiModerationText123') + queue.length + '</span></div>'));
     if (!queue.length) list.append(empty(t('uiModerationText124'), t('uiModerationText125')));
     for (const message of queue) {
-      const row = panel('review-row'); row.append(html(`<div class="review-content"><div class="review-meta"><strong>@${escape(text(message, 'username'))}</strong><span class="tag">${escape(text(message, 'category'))}</span><span class="muted">${escape(providerName(text(message, 'provider')))}</span></div><p class="quoted-message">${escape(text(message, 'content'))}</p><p class="muted">${escape(text(message, 'reason'))}</p></div>`));
+      const row = panel('review-row'); row.append(html(`<div class="review-content"><div class="review-meta"><strong>@${escape(text(message, 'username'))}</strong><span class="tag">${escape(text(message, 'category'))}</span>${this.isAdmin() ? `<span class="muted">${escape(providerName(text(message, 'provider')))}</span>` : ''}</div><p class="quoted-message">${escape(text(message, 'content'))}</p><p class="muted">${escape(text(message, 'reason'))}</p></div>`));
       const actions = panel('action-row'); actions.append(button(t('uiModerationText126'), 'button primary small', () => this.reviewMessage(message, true)), button(t('uiModerationText127'), 'button danger small', () => this.reviewMessage(message, false)),
         button(t('muteFiveMinutes'), 'button subtle small', async () => {await this.api.request('POST', `/channels/${this.channel}/sanctions`, {userId: text(message, 'user_id'), type: 'MUTE', seconds: 300, reason: t('uiModerationText128')}); toast(t('uiModerationText129')); await this.loadDashboard(true);}),
         button(t('banUser'), 'button danger small', async () => {await this.api.request('POST', `/channels/${this.channel}/sanctions`, {userId: text(message, 'user_id'), type: 'BAN', seconds: 30, reason: t('uiModerationText128')}); toast(t('banApplied')); await this.loadDashboard(true);}));
@@ -997,6 +1003,9 @@ export class StreamGuardApp {
   }
   private async account(): Promise<void> {
     this.title(t('uiAccountText200'), '@' + text(this.user, 'username'), t('profileDescription'));
+    const admin = this.isAdmin();
+    this.content.append(html(`<div class="info-banner role-banner${admin ? ' admin-role' : ''}">${icon(admin ? 'gauge' : 'shield')}<div><strong>${escape(t('profileTypeLabel'))}: ${escape(t(admin ? 'roleAdmin' : 'roleUser'))}</strong><p>${escape(t(admin ? 'roleAdminHelp' : 'roleUserHelp'))}</p></div></div>`));
+    if (admin) this.content.append(button(t('adminOpenPanel'), 'button primary', () => this.route('admin')));
     this.content.append(button(t('uiAccountText201'), 'button subtle', () => {this.channel = ''; this.route('studio');}), button(t('uiAccountText202'), 'button danger', async () => {
       if (this.broadcasting) {await media.finalizeRecording(); await this.api.request('POST', `/streams/${this.stream}/end`, {});}
       if (this.locationChannel) await this.api.request('PUT',`/channels/${this.locationChannel}/location`,{shared:false});
@@ -1025,12 +1034,141 @@ export class StreamGuardApp {
     actions.append(button(t('previousPart'),'button subtle small',()=>{if (index>0) {index--;load();}}),button(t('nextPart'),'button subtle small',()=>{if (index+1<parts.length) {index++;load();}}),button(t('closeWindow'),'button subtle small',modal.close));
     modal.form.append(video,status,actions); modal.element.addEventListener('close',()=>{video.pause();video.removeAttribute('src');video.load();}); load();
   }
+  private isAdmin(): boolean {return text(this.user, 'role') === 'ADMIN';}
+  /** A yes/no question in the app's own dialog; closing it counts as "no". */
+  private confirmAction(heading: string, detail: string, label: string): Promise<boolean> {
+    return new Promise(resolve => {
+      const modal = dialog(heading); let answered = false;
+      const finish = (value: boolean) => {if (answered) return; answered = true; resolve(value); modal.close();};
+      const message = document.createElement('p'); message.className = 'muted'; message.textContent = detail;
+      const actions = panel('action-row'); actions.append(button(label, 'button danger', () => finish(true)), button(t('uiEditClipText154'), 'button subtle', () => finish(false)));
+      modal.form.append(message, actions); modal.element.addEventListener('close', () => {if (!answered) {answered = true; resolve(false);}});
+    });
+  }
+  /** Administration panel: platform figures, technical status, accounts, live broadcasts and categories. The server checks the role again on every call. */
+  private async adminPanel(): Promise<void> {
+    this.title(t('adminEyebrow'), t('adminTitle'), t('adminDescription'));
+    const epoch = this.epoch;
+    const [overview, live, actions] = await Promise.all([this.api.request('GET', '/admin/overview'), this.api.request('GET', '/admin/streams'), this.api.request('GET', '/admin/actions')]);
+    if (epoch !== this.epoch) return;
+    const totals = object(object(overview).totals), system = object(object(overview).system);
+    const figures = panel('stats-grid admin-stats');
+    for (const [label, key] of [['adminFigureUsers', 'users'], ['adminFigureAdmins', 'admins'], ['adminFigureSuspended', 'suspended'], ['adminFigureChannels', 'channels'], ['adminFigureLive', 'live'], ['adminFigureStreams', 'streams'], ['adminFigureMessages', 'messages'], ['adminFigurePending', 'pending_reviews'], ['adminFigureClips', 'clips'], ['adminFigureEvents', 'upcoming_events']] as const)
+      figures.append(html(`<article class="metric"><span>${escape(t(label))}</span><strong>${escape(text(totals, key) || '0')}</strong></article>`));
+    this.content.append(figures);
+
+    const technical = panel('surface admin-section'); technical.append(html(`<div class="panel-heading"><h2>${escape(t('adminSystemTitle'))}</h2></div><p class="muted">${escape(t('adminSystemHelp'))}</p>`));
+    const yes = (value: boolean) => value ? t('adminYes') : t('adminNo');
+    const uptime = Number(text(system, 'uptimeSeconds')) || 0, hours = Math.floor(uptime / 3600), minutes = Math.floor(uptime % 3600 / 60);
+    const facts: Array<[string, string]> = [
+      [t('adminAiProvider'), providerName(text(system, 'aiProvider'))], [t('aiModelLabel'), text(system, 'aiModel') || '—'],
+      [t('adminAiConfigured'), yes(flag(system, 'aiConfigured'))], [t('adminGemini'), flag(system, 'geminiConfigured') ? t('adminGeminiReady') : t('adminGeminiMissing')],
+      [t('adminUptime'), `${hours} h ${minutes} min`], [t('adminMemory'), `${text(system, 'memoryUsedMb')} / ${text(system, 'memoryMaxMb')} MB`],
+      [t('adminProcessors'), text(system, 'processors')], [t('adminJava'), text(system, 'javaVersion')],
+      [t('adminDatabase'), `PostgreSQL ${text(system, 'databaseVersion')} · ${text(system, 'databaseSizeMb')} MB`], [t('adminSchema'), text(system, 'schemaVersion') ? 'V' + text(system, 'schemaVersion') : '—'],
+    ];
+    const list = document.createElement('dl'); list.className = 'admin-facts';
+    for (const [label, value] of facts) {const term = document.createElement('dt'), detail = document.createElement('dd'); term.textContent = label; detail.textContent = value; list.append(term, detail);}
+    technical.append(list);
+
+    const people = panel('surface admin-section'); people.append(html(`<div class="panel-heading"><h2>${escape(t('adminUsersTitle'))}</h2></div><p class="muted">${escape(t('adminUsersHelp'))}</p>`));
+    const finder = input(t('adminUsersSearch')); finder.maxLength = 64; finder.type = 'search'; finder.setAttribute('aria-label', t('adminUsersSearch'));
+    const accounts = panel('admin-list'); people.append(finder, accounts);
+    const loadUsers = async () => {
+      const found = rows(await this.api.request('GET', `/admin/users?search=${encodeURIComponent(finder.value.trim())}`));
+      if (!accounts.isConnected) return; accounts.replaceChildren();
+      if (!found.length) accounts.append(html(`<p class="muted">${escape(t('adminUsersEmpty'))}</p>`));
+      for (const person of found) accounts.append(this.adminUserRow(person, loadUsers));
+    };
+    let searchTimer = 0; finder.addEventListener('input', () => {window.clearTimeout(searchTimer); searchTimer = window.setTimeout(() => this.launch(loadUsers), 300);});
+
+    const broadcasts = panel('surface admin-section'); broadcasts.append(html(`<div class="panel-heading"><h2>${escape(t('adminLiveTitle'))}</h2></div>`));
+    const streams = rows(live);
+    if (!streams.length) broadcasts.append(html(`<p class="muted">${escape(t('adminLiveEmpty'))}</p>`));
+    for (const stream of streams) {
+      const row = panel('admin-row'), title = text(stream, 'title'), started = new Date(text(stream, 'started_at')).toLocaleTimeString('es-CO', {hour: 'numeric', minute: '2-digit'});
+      const category = text(stream, 'category');
+      row.append(html(`<div class="admin-row-main"><span class="status-dot"></span><div><strong>${escape(title)}</strong><small class="muted">@${escape(text(stream, 'username'))} · ${escape(text(stream, 'channel_name'))}${category ? ' · ' + escape(category) : ''} · ${escape(t('adminSince'))} ${escape(started)}</small></div><div class="admin-tags"><span class="tag">${escape(text(stream, 'viewers') || '0')} ${escape(t('adminViewers'))}</span></div></div>`));
+      const controls = panel('action-row');
+      controls.append(button(t('adminWatch'), 'button subtle small', () => this.openStream({id: text(stream, 'id'), title})), button(t('adminEndStream'), 'button danger small', async () => {
+        if (!await this.confirmAction(t('adminEndStreamTitle'), t('adminEndStreamDetail').replace('{title}', title), t('adminEndStream'))) return;
+        await this.api.request('POST', `/admin/streams/${text(stream, 'id')}/end`, {}); toast(t('adminStreamEnded')); this.route('admin');
+      }));
+      row.append(controls); broadcasts.append(row);
+    }
+
+    const catalogue = panel('surface admin-section'); catalogue.append(html(`<div class="panel-heading"><h2>${escape(t('adminCategoriesTitle'))}</h2></div><p class="muted">${escape(t('adminCategoriesHelp'))}</p>`));
+    const refreshCategories = async () => {this.categories = rows(await this.api.request('GET', '/categories')); this.route('admin');};
+    for (const category of this.categories) {
+      const row = panel('simple-row'), name = document.createElement('span'); name.textContent = text(category, 'name');
+      row.append(name, button(t('adminRename'), 'button subtle small', () => {
+        const modal = dialog(t('adminRenameTitle')), value = input(t('adminCategoryName'), text(category, 'name')); value.maxLength = 64;
+        modal.form.append(field(t('adminCategoryName'), value), button(t('saveChanges'), 'button primary', async () => {
+          if (!value.value.trim()) {value.focus(); return;}
+          await this.api.request('PUT', `/admin/categories/${text(category, 'id')}`, {name: value.value.trim()}); modal.close(); toast(t('adminCategorySaved')); await refreshCategories();
+        }), button(t('uiEditClipText154'), 'button subtle', modal.close)); value.focus();
+      }));
+      catalogue.append(row);
+    }
+    const newName = input(t('adminCategoryNew')); newName.maxLength = 64; newName.setAttribute('aria-label', t('adminCategoryNew'));
+    const create = panel('admin-inline'); create.append(newName, button(t('adminCategoryCreate'), 'button primary small', async () => {
+      if (!newName.value.trim()) {newName.focus(); return;}
+      await this.api.request('POST', '/admin/categories', {name: newName.value.trim()}); toast(t('adminCategorySaved')); await refreshCategories();
+    }));
+    catalogue.append(create);
+
+    const activity = panel('surface admin-section'); activity.append(html(`<div class="panel-heading"><h2>${escape(t('adminActivityTitle'))}</h2></div>`));
+    const entries = rows(actions);
+    if (!entries.length) activity.append(html(`<p class="muted">${escape(t('adminActivityEmpty'))}</p>`));
+    const actionNames: Record<string, string> = {
+      ADMIN_GRANT: t('adminActionGrant'), ADMIN_REVOKE: t('adminActionRevoke'), ADMIN_SUSPEND: t('adminActionSuspend'),
+      ADMIN_REACTIVATE: t('adminActionReactivate'), ADMIN_END_STREAM: t('adminActionEndStream'),
+      ADMIN_CATEGORY_CREATE: t('adminActionCategoryCreate'), ADMIN_CATEGORY_RENAME: t('adminActionCategoryRename'),
+    };
+    for (const entry of entries) {
+      const when = new Date(text(entry, 'created_at')).toLocaleString('es-CO', {day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit'});
+      const line = panel('simple-row'), what = document.createElement('span'), meta = document.createElement('small');
+      what.textContent = `${actionNames[text(entry, 'action')] ?? text(entry, 'action')} ${text(entry, 'label')}`; meta.className = 'muted'; meta.textContent = `@${text(entry, 'admin')} · ${when}`;
+      line.append(what, meta); activity.append(line);
+    }
+    const columns = panel('admin-columns'); columns.append(people, technical);
+    this.content.append(columns, broadcasts, catalogue, activity);
+    await loadUsers();
+  }
+  private adminUserRow(person: Row, reload: () => Promise<void>): HTMLDivElement {
+    const row = panel('admin-row'), id = text(person, 'id'), username = text(person, 'username'), handle = '@' + username;
+    const self = id === text(this.user, 'id'), admin = flag(person, 'admin'), suspended = text(person, 'status') === 'SUSPENDED', locked = flag(person, 'protected');
+    const tags = [
+      `<span class="tag${admin ? ' admin-tag' : ''}">${escape(t(admin ? 'roleAdmin' : 'roleUser'))}</span>`,
+      suspended ? `<span class="tag suspended-tag">${escape(t('adminSuspendedTag'))}</span>` : '',
+      flag(person, 'live') ? `<span class="tag live-tag">${escape(t('liveShort'))}</span>` : '',
+      self ? `<span class="tag">${escape(t('adminYou'))}</span>` : '',
+    ].join('');
+    const channel = text(person, 'channel_name');
+    row.append(html(`<div class="admin-row-main"><span class="avatar-chip small">${escape(username.slice(0, 1).toUpperCase())}</span><div><strong>${escape(handle)}</strong><small class="muted">${escape(text(person, 'display_name'))}${channel ? ' · ' + escape(channel) : ''}</small></div><div class="admin-tags">${tags}</div></div>`));
+    const role = button(t(admin ? 'adminRevoke' : 'adminGrant'), 'button subtle small', async () => {
+      const ok = await this.confirmAction(t(admin ? 'adminRevokeTitle' : 'adminGrantTitle'), t(admin ? 'adminRevokeDetail' : 'adminGrantDetail').replace('{user}', handle), t(admin ? 'adminRevoke' : 'adminGrant'));
+      if (!ok) return;
+      await this.api.request('PUT', `/admin/users/${id}/role`, {admin: !admin}); toast(t(admin ? 'adminRevoked' : 'adminGranted').replace('{user}', handle)); await reload();
+    });
+    role.disabled = admin ? self || locked : suspended;
+    if (admin && locked) role.title = t('adminLockedHelp'); else if (admin && self) role.title = t('adminSelfHelp');
+    const status = button(t(suspended ? 'adminReactivate' : 'adminSuspend'), suspended ? 'button subtle small' : 'button danger small', async () => {
+      if (!suspended && !await this.confirmAction(t('adminSuspendTitle'), t('adminSuspendDetail').replace('{user}', handle), t('adminSuspend'))) return;
+      await this.api.request('PUT', `/admin/users/${id}/status`, {status: suspended ? 'ACTIVE' : 'SUSPENDED'}); toast(t(suspended ? 'adminReactivated' : 'adminSuspendedDone').replace('{user}', handle)); await reload();
+    });
+    status.disabled = self || (admin && !suspended);
+    if (!self && admin && !suspended) status.title = t('adminSuspendAdminHelp');
+    const controls = panel('action-row'); controls.append(role, status); row.append(controls); return row;
+  }
   private aiStatus(): HTMLDivElement {
     const capabilities = object(this.dashboard.assistantCapabilities);
     const configured = typeof capabilities.configured === 'boolean' ? flag(capabilities, 'configured') : flag(this.config, 'aiConfigured');
     const provider = text(capabilities, 'provider') || text(this.config, 'aiMode');
     const model = text(capabilities, 'model') || text(this.config, 'aiModel');
     const localModel = provider === 'OLLAMA';
+    // Provider, model and infrastructure details are technical: only administrators see them.
+    if (!this.isAdmin()) return html(`<div class="info-banner ai-provider-status${configured ? ' success-banner' : ''}">${icon('spark')}<div><strong>${escape(configured ? t('aiActiveSimple') : t('uiAiStatusText204'))}</strong><p>${escape(configured ? t('uiAiStatusText205') : t('uiAiStatusText206'))}</p></div></div>`);
     const label = configured ? `${t('aiProviderConfigured')}: ${providerName(provider)}` : t('uiAiStatusText204');
     return html(`<div class="info-banner ai-provider-status${configured ? ' success-banner' : ''}">${icon('spark')}<div><strong>${escape(label)}</strong>${configured ? `<p>${escape(t('aiModelLabel'))}: ${escape(model)}</p>` : ''}<p>${configured ? (localModel ? t('localAiAvailability') : t('uiAiStatusText205')) : t('uiAiStatusText206')}</p></div></div>`);
   }

@@ -333,6 +333,12 @@ html[data-theme="dark"] .channel-item .button.follow{background:#001232;color:#6
 html[data-theme="dark"] .channel-item .button.following{background:linear-gradient(135deg,#38bdf8,#2f6bff);color:#fff;border-color:transparent}
 html[data-theme="dark"] .channel-item.offline small::before{background:#2a374f}
 html[data-theme="dark"] .clips-wave i{background:#00385e}
+html[data-theme="dark"] .admin-row{border:1px solid #163057;background:#00132d}
+html[data-theme="dark"] .tag.admin-tag{background:#001437;border-color:#002e8b;color:#668bd9}
+html[data-theme="dark"] .tag.suspended-tag{background:#310000;border-color:#7d0000;color:#d86363}
+html[data-theme="dark"] .tag.live-tag{background:#330008;border-color:#830016;color:#d8637a}
+html[data-theme="dark"] .admin-facts dt{color:#879bbe}
+html[data-theme="dark"] .role-banner.admin-role{border-color:#002e8b;background:#001232;color:#b8c7e8}
 /* exceptions: buttons that sit on the bright hero keep their light look */
 html[data-theme="dark"] .home-hero .primary{background:#fff;color:#1553d6}
 html[data-theme="dark"] .home-hero .primary:hover{background:#eaf3ff}
