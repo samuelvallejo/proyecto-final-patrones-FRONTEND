@@ -63,7 +63,7 @@ $env:PUBLIC_API_URL='https://tu-backend.example.com'
 npm run build
 ```
 
-La configuración del repositorio publica `frontend/dist` en Vercel o Firebase Hosting. En ambos servicios configura `PUBLIC_API_URL` como variable de entorno de compilación. Las instrucciones de la instancia completa y sus servicios están en [`docs/shared-streaming.md`](docs/shared-streaming.md) y [`docs/browser-capture-support.md`](docs/browser-capture-support.md).
+La aplicación se publica en Vercel con la configuración de `vercel.json`. Configura `PUBLIC_API_URL` como variable de entorno de compilación. Las instrucciones de la instancia completa y sus servicios están en [`docs/shared-streaming.md`](docs/shared-streaming.md) y [`docs/browser-capture-support.md`](docs/browser-capture-support.md).
 
 ## Mapa del código
 

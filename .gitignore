@@ -4,7 +4,6 @@ frontend/dist/
 .env.*
 !.env.example
 .vercel/
-.firebase/
 *.log
 
 # Screenshots written by failed browser tests
