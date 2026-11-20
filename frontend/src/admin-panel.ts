@@ -2,6 +2,7 @@ import type {ApiClient} from './api';
 import {object, rows, text, flag, type Row} from './contracts';
 import {panel, html, escape, input, area, field, button, checkbox, select, toast, dialog} from './dom';
 import {t} from './i18n';
+import {AdminContentSections} from './admin-content';
 
 /** Display name of an AI provider, shared by the panel and the studio's AI banner. */
 export function providerName(provider: string): string {return provider === 'OLLAMA' ? t('localAiProvider') : provider === 'GEMINI' ? 'Gemini' : provider === 'UNAVAILABLE' ? t('uiProviderNameText210') : t('uiProviderNameText211');}
@@ -170,6 +171,7 @@ export class AdminPanelView {
       ADMIN_ANNOUNCE: t('adminActionAnnounce'), ADMIN_ANNOUNCE_REMOVE: t('adminActionAnnounceRemove'),
       ADMIN_MAINTENANCE_ON: t('adminActionMaintenanceOn'), ADMIN_MAINTENANCE_OFF: t('adminActionMaintenanceOff'),
       ADMIN_REGISTRATION_OPEN: t('adminActionRegistrationOpen'), ADMIN_REGISTRATION_CLOSE: t('adminActionRegistrationClose'),
+      ADMIN_TAKEDOWN: t('adminActionTakedown'), ADMIN_RESTORE: t('adminActionRestore'), ADMIN_AI_RULES: t('adminActionAiRules'),
     };
     for (const entry of entries) {
       const when = new Date(text(entry, 'created_at')).toLocaleString('es-CO', {day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit'});
@@ -178,7 +180,9 @@ export class AdminPanelView {
       line.append(what, meta); activity.append(line);
     }
     const columns = panel('admin-columns'); columns.append(people, technical);
-    this.host.content.append(columns, broadcasts, catalogue, activity);
+    const moderation = await new AdminContentSections(this.host).render();
+    if (epoch !== this.host.epoch) return;
+    this.host.content.append(columns, broadcasts, ...moderation, catalogue, activity);
     await loadUsers();
   }
   private userRow(person: Row, reload: () => Promise<void>): HTMLDivElement {
